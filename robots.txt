@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /trinkets/site.html
+Disallow: /trinkets/landscape-title-bg.html
+
+Sitemap: https://mining123studios.github.io/trinkets/sitemap.xml
