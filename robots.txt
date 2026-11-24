@@ -2,5 +2,7 @@ User-agent: *
 Allow: /
 Disallow: /trinkets/site.html
 Disallow: /trinkets/landscape-title-bg.html
+Disallow: /trinkets/logo-anim.html
+Disallow: /trinkets/math-keyboard-de.html
 
 Sitemap: https://mining123studios.github.io/trinkets/sitemap.xml

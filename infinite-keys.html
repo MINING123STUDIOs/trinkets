@@ -1,0 +1,3244 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#06050a" media="(prefers-color-scheme: dark)"><meta name="theme-color" content="#f7f4fb" media="(prefers-color-scheme: light)"><title>Infinite Keys — endless generative piano</title><meta name="description" content="A single-file generative music instrument: endless, slightly random piano chords across fifteen moods."><script>
+  /* Resolve the theme before first paint, exactly like the other toys, so a
+     light-mode visitor never sees a dark flash. The in-page toggle writes the
+     same `tools-theme` key, so the choice carries across the whole site. */
+  (function () {
+    var s = null;
+    try { s = localStorage.getItem("tools-theme"); } catch (e) {}
+    if (s !== "light" && s !== "dark") {
+      s = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    }
+    document.documentElement.setAttribute("data-theme", s);
+  })();
+</script><style>:root{color-scheme:dark;--bg:#06050a;--ink:#f5f1ff;--muted:#a49bbd;--line:rgba(255,255,255,.09);--panel:rgba(17,13,28,.66);--accent:#b79cff;--accent2:#7c5cff;--accent-rgb:183,156,255;--accent2-rgb:124,92,255;--radius:26px;--ease:cubic-bezier(.22,.61,.36,1);--bg-1:#0a0712;--bg-2:#06050a;--bg-3:#040308;--wash-a:.20;--wash-b:.13;--wash-c:.10;--veil:rgba(255,255,255,.025);--veil-2:rgba(255,255,255,.035);--veil-3:rgba(255,255,255,.08);--gloss:rgba(255,255,255,.35);--gloss-2:rgba(255,255,255,.06);--gloss-3:rgba(255,255,255,.4);--shadow:rgba(0,0,0,.55);--deck-1:rgba(26,21,42,.72);--deck-2:rgba(12,9,22,.78);--deck-s1:rgba(26,21,42,.94);--deck-s2:rgba(12,9,22,.96);--on-accent:#0b0714;--idle-dot:#5b5470;--mark-bar:rgba(8,5,16,.72);--track:rgba(255,255,255,.12);--thumb:#fff;--hairline:rgba(255,255,255,.07);--keybed-1:#0a0812;--keybed-2:#050409;--key-w1:#f2eefc;--key-w2:#d9d3e8;--key-w3:#c4bed6;--key-wh1:#fff;--key-wh2:#e6e1f4;--key-wline:rgba(20,15,34,.55);--key-winset:rgba(60,48,92,.18);--key-b1:#2a2438;--key-b2:#0d0a15;--key-b3:#191328;--key-bline:rgba(255,255,255,.06);--key-label:#6a6380;--key-on1:#fff;--key-on2:#fff5ff;--noise:.035} [data-theme="light"]{color-scheme:light;--bg:#f7f4fb;--ink:#1b1626;--muted:#655c7a;--line:rgba(20,12,40,.14);--panel:rgba(255,255,255,.72);--bg-1:#fbf8ff;--bg-2:#f4f0fa;--bg-3:#ece6f6;--wash-a:.16;--wash-b:.11;--wash-c:.09;--veil:rgba(255,255,255,.62);--veil-2:rgba(255,255,255,.74);--veil-3:rgba(20,12,40,.06);--gloss:rgba(255,255,255,.75);--gloss-2:rgba(255,255,255,.65);--gloss-3:rgba(255,255,255,.55);--shadow:rgba(64,44,120,.18);--deck-1:rgba(255,255,255,.80);--deck-2:rgba(248,244,255,.88);--deck-s1:rgba(255,255,255,.94);--deck-s2:rgba(250,247,255,.97);--on-accent:#fff;--idle-dot:#b6adc9;--mark-bar:rgba(255,255,255,.82);--track:rgba(20,12,40,.12);--thumb:#fff;--hairline:rgba(20,12,40,.10);--keybed-1:#e6dff2;--keybed-2:#d6cde7;--key-w1:#fff;--key-w2:#f3effb;--key-w3:#e5def4;--key-wh1:#fff;--key-wh2:#f6f0ff;--key-wline:rgba(20,12,40,.28);--key-winset:rgba(60,48,92,.10);--key-b1:#5a5370;--key-b2:#2b2440;--key-b3:#3d3457;--key-bline:rgba(255,255,255,.28);--key-label:#8b82a0;--key-on1:#fff;--key-on2:rgba(var(--accent-rgb),.42);--noise:.018} [data-theme="light"] #chordName{text-shadow:0 0 56px rgba(var(--accent-rgb),.18)} *{box-sizing:border-box} html,body{height:100%} body{margin:0;overflow:hidden;color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(110% 75% at 50% -10%,rgba(var(--accent2-rgb),var(--wash-a)),transparent 62%),radial-gradient(80% 60% at 8% 108%,rgba(var(--accent-rgb),var(--wash-b)),transparent 60%),radial-gradient(70% 55% at 96% 96%,rgba(var(--accent2-rgb),var(--wash-c)),transparent 60%),linear-gradient(160deg,var(--bg-1) 0%,var(--bg-2) 55%,var(--bg-3) 100%);-webkit-font-smoothing:antialiased} body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:2;opacity:var(--noise);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E")} #perf{position:fixed;top:8px;left:8px;z-index:99;margin:0;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,.74);color:#d6ffd6;border:1px solid rgba(255,255,255,.16);font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre;pointer-events:none} #scene{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none} [data-theme="light"] #scene{mix-blend-mode:multiply} .app{position:relative;z-index:1;height:100vh;height:100dvh;max-width:1320px;margin:0 auto;padding:clamp(14px,2.4vw,30px) clamp(14px,2.6vw,34px) clamp(12px,2vw,24px);display:flex;flex-direction:column;gap:10px;overflow-y:auto;overscroll-behavior:contain} header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex:0 0 auto} .brand{display:flex;align-items:center;gap:11px;min-width:0} .brand .mark{width:34px;height:34px;border-radius:11px;flex:0 0 auto;background:linear-gradient(140deg,var(--accent),var(--accent2));box-shadow:0 0 26px rgba(var(--accent2-rgb),.45),inset 0 1px 0 var(--gloss);position:relative;overflow:hidden} .brand .mark::before,.brand .mark::after{content:"";position:absolute;left:8px;right:8px;height:2px;border-radius:2px;background:var(--mark-bar)} .brand .mark::before{top:12px} .brand .mark::after{bottom:12px} .brand h1{margin:0;font-size:clamp(14px,1.5vw,17px);font-weight:650;letter-spacing:.16em;text-transform:uppercase;white-space:nowrap} .brand p{margin:2px 0;font-size:11px;letter-spacing:.04em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .status{display:flex;align-items:center;gap:12px;flex:0 1 auto;min-width:0;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)} .live{display:flex;align-items:center;gap:7px} .live .dot{width:7px;height:7px;border-radius:50%;background:var(--idle-dot);transition:background .3s,box-shadow .3s} .live.on .dot{background:var(--accent);box-shadow:0 0 12px var(--accent);animation:pulse 1.8s infinite} @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}} main{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:1vh 0} .eyebrow{font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px} .eyebrow::before,.eyebrow::after{content:"";width:26px;height:1px;background:linear-gradient(90deg,transparent,var(--accent));opacity:.5} .eyebrow::after{transform:scaleX(-1)} #chordName{font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;font-size:clamp(58px,11.5vw,148px);font-weight:500;line-height:.88;letter-spacing:-.045em;margin:0;min-height:.9em;text-shadow:0 0 70px rgba(var(--accent-rgb),.28);transition:color .5s,text-shadow .5s} #chordName.swap{animation:chordIn .55s var(--ease)} @keyframes chordIn{0%{opacity:.12;transform:translateY(12px) scale(.985);filter:blur(7px)} 100%{opacity:1;transform:none;filter:blur(0)}} .chord-meta{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px 16px;margin-top:16px;min-height:28px} .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);background:var(--veil)} .pill.roman{color:var(--accent);border-color:rgba(var(--accent-rgb),.28)} #chordNotes{font-size:12px;letter-spacing:.3em;color:var(--muted);text-transform:uppercase;font-variant-numeric:tabular-nums} .blurb{margin-top:10px;font-size:12px;color:var(--muted);letter-spacing:.04em;opacity:.85;min-height:1.4em} .deck{flex:0 0 auto;background:linear-gradient(180deg,var(--deck-1),var(--deck-2));border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 30px 90px var(--shadow),inset 0 1px 0 var(--gloss-2);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);padding:clamp(12px,1.6vw,18px);display:flex;flex-direction:column;gap:12px} .transport{display:flex;align-items:center;gap:14px;flex-wrap:wrap} .play{width:56px;height:56px;flex:0 0 auto;border:0;border-radius:50%;cursor:pointer;display:grid;place-items:center;background:linear-gradient(140deg,var(--accent),var(--accent2));color:var(--on-accent);box-shadow:0 8px 26px rgba(var(--accent2-rgb),.42),inset 0 1px 0 var(--gloss-3);transition:transform .18s var(--ease),box-shadow .3s,background .6s} .play:hover{transform:translateY(-1px) scale(1.03)} .play:active{transform:scale(.97)} .play .tri{width:0;height:0;margin-left:4px;border-left:15px solid currentColor;border-top:9.5px solid transparent;border-bottom:9.5px solid transparent} .play .bars{display:none;gap:4px} .play .bars i{display:block;width:4px;height:17px;border-radius:2px;background:currentColor} .play[aria-pressed="true"] .tri{display:none} .play[aria-pressed="true"] .bars{display:flex} .knobs{display:flex;align-items:center;gap:clamp(10px,2vw,22px);flex:1 1 320px;min-width:0} .knob{display:flex;flex-direction:column;gap:6px;flex:1 1 0;min-width:62px} .knob .row{display:flex;align-items:baseline;justify-content:space-between;gap:8px} .knob label{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);white-space:nowrap} .knob output{font-size:10px;color:var(--ink);opacity:.8;font-variant-numeric:tabular-nums} input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:4px;margin:5px 0;border-radius:99px;background:linear-gradient(90deg,var(--accent) 0 var(--fill,50%),var(--track) var(--fill,50%) 100%);outline:none;cursor:pointer} input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--thumb);border:2px solid rgba(var(--accent2-rgb),.9);box-shadow:0 0 10px rgba(var(--accent-rgb),.65);cursor:pointer} input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:var(--thumb);border:2px solid rgba(var(--accent2-rgb),.9);box-shadow:0 0 10px rgba(var(--accent-rgb),.65);cursor:pointer} .mini-actions{display:flex;gap:8px;flex:0 0 auto} .ghost{border:1px solid var(--line);background:var(--veil-2);color:var(--ink);padding:9px 13px;border-radius:12px;cursor:pointer;font-size:11px;letter-spacing:.09em;text-transform:uppercase;white-space:nowrap;transition:background .2s,border-color .2s,transform .15s var(--ease)} .ghost:hover{background:var(--veil-3);border-color:rgba(var(--accent-rgb),.4)} .ghost:active{transform:translateY(1px)} .ghost[aria-pressed="true"]{border-color:rgba(var(--accent-rgb),.38)} #visualsBtn{display:inline-flex;align-items:center;gap:7px} #visualsBtn .vis-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 9px rgba(var(--accent-rgb),.9);transition:background .25s,box-shadow .25s} #visualsBtn[aria-pressed="false"]{color:var(--muted)} #visualsBtn[aria-pressed="false"] .vis-dot{background:var(--idle-dot);box-shadow:none} .theme-btn{display:inline-flex;align-items:center;justify-content:center;width:34px;padding:0;font-size:14px;line-height:1;letter-spacing:0;text-transform:none} body.no-visuals{transition:none} body.no-visuals #scene{display:none} body.no-visuals #chordName{text-shadow:none} body.no-visuals #chordName.swap{animation:none} body.no-visuals .deck{backdrop-filter:none;-webkit-backdrop-filter:none;background:linear-gradient(180deg,var(--deck-s1),var(--deck-s2))} body.no-blur .deck{backdrop-filter:none;-webkit-backdrop-filter:none}:focus-visible{outline:2px solid var(--accent);outline-offset:3px} .styles{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:100%} .style-btn{display:inline-flex;align-items:center;gap:8px;flex:0 0 auto;border:1px solid var(--line);background:var(--veil);color:var(--muted);border-radius:999px;padding:7px 11px;cursor:pointer;font-size:10.5px;letter-spacing:.07em;white-space:nowrap;transition:color .2s,background .2s,border-color .2s,box-shadow .2s} .style-btn .dot{width:7px;height:7px;border-radius:50%;background:var(--c,var(--accent));opacity:.65} .style-btn:hover{color:var(--ink);background:var(--veil-3)} .style-btn[aria-pressed="true"]{color:var(--on-accent);background:linear-gradient(120deg,var(--accent),var(--accent2));border-color:transparent;box-shadow:0 0 12px rgba(var(--accent2-rgb),.45);font-weight:600} .style-btn[aria-pressed="true"] .dot{background:var(--on-accent);opacity:.8} .keys-wrap{position:relative;height:clamp(74px,10.5vh,112px);border-radius:15px;overflow:hidden;flex:0 0 auto;border:1px solid var(--hairline);background:linear-gradient(180deg,var(--keybed-1),var(--keybed-2));box-shadow:inset 0 8px 20px var(--shadow);touch-action:none} .keys{position:absolute;inset:0} .key{position:absolute;top:0;padding:0;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent} .key.white{height:100%;border-radius:0 0 7px 7px;background:linear-gradient(180deg,var(--key-w1) 0%,var(--key-w2) 78%,var(--key-w3) 100%);border-right:1px solid var(--key-wline);box-shadow:inset 0 -7px 10px var(--key-winset);display:flex;align-items:flex-end;justify-content:center;padding-bottom:7px;transition:background .12s,box-shadow .12s} .key.white:hover{background:linear-gradient(180deg,var(--key-wh1) 0%,var(--key-wh2) 100%)} .key.black{height:62%;z-index:2;border-radius:0 0 5px 5px;background:linear-gradient(180deg,var(--key-b1) 0%,var(--key-b2) 70%,var(--key-b3) 100%);border:1px solid var(--key-bline);border-top:0;box-shadow:0 5px 7px var(--shadow),inset 0 -4px 5px var(--gloss-2);transition:background .12s,box-shadow .12s} .key .klabel{font-size:8.5px;letter-spacing:.06em;color:var(--key-label);pointer-events:none;font-variant-numeric:tabular-nums} .key.chord{background:linear-gradient(180deg,rgba(var(--accent-rgb),.92),rgba(var(--accent2-rgb),.78))} .key.black.chord{background:linear-gradient(180deg,rgba(var(--accent-rgb),.8),rgba(var(--accent2-rgb),.42))} .key.on{background:linear-gradient(180deg,var(--key-on1),var(--key-on2));box-shadow:0 0 22px rgba(var(--accent-rgb),.85),inset 0 -4px 8px rgba(var(--accent2-rgb),.25)} .key.black.on{background:linear-gradient(180deg,var(--key-on1),var(--key-on2))} .key.chord.on{background:linear-gradient(180deg,var(--key-on1),var(--key-on1))} footer{display:flex;align-items:center;justify-content:space-between;gap:14px;flex:0 0 auto;padding:0 4px;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);opacity:.62} footer kbd{font:inherit;border:1px solid var(--line);border-radius:5px;padding:2px 5px;color:var(--ink);background:var(--veil-2)} .footer-hint{display:flex;gap:14px;flex-wrap:wrap} @media (max-width:820px){.status .live span:last-child{display:none} .brand p{display:none} .deck{backdrop-filter:none;-webkit-backdrop-filter:none;background:linear-gradient(180deg,var(--deck-s1),var(--deck-s2))} .knobs{order:3;flex-basis:100%} .transport{gap:10px} .play{width:50px;height:50px} #chordName{font-size:clamp(52px,18vw,96px)} .chord-meta{margin-top:12px} footer .footer-hint span:nth-child(n+3){display:none} .keys-wrap{height:clamp(66px,11vh,92px)}} @media (max-width:520px){.app{gap:8px} .deck{border-radius:20px} .styles{gap:6px} .style-btn{padding:6px 9px;font-size:9.5px;gap:6px} .mini-actions{width:100%;justify-content:flex-end} .ghost{padding:8px 11px;font-size:10px} .theme-btn{padding:0;width:32px} .chord-meta{gap:8px} footer{display:none}} @media (max-height:700px){#chordName{font-size:clamp(44px,9vw,92px)} .blurb{display:none} .keys-wrap{height:64px} .play{width:48px;height:48px} main{padding:0}} @media (prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important}}</style><canvas id="scene" aria-hidden="true"></canvas><div class="app"><header><div class="brand"><div class="mark" aria-hidden="true"></div><div><h1>Infinite Keys</h1><p>endless generative piano · fifteen moods · no two bars alike</div></div><div class="status"><span class="live" id="liveBadge"><span class="dot"></span><span>paused</span></span> </div></header><main><div class="eyebrow" id="styleLabel">Nocturne</div><h2 id="chordName" aria-live="polite">—</h2><div class="chord-meta"><span class="pill roman" id="chordRoman">i</span> <span id="chordNotes">—</span> </div><p class="blurb" id="blurb">Romantic minor-key reverie</main><section class="deck" aria-label="Instrument controls"><div class="transport"><button class="play" id="playBtn" type="button" aria-pressed="false" aria-label="Play"> <span class="tri" aria-hidden="true"></span> <span class="bars" aria-hidden="true"><i></i><i></i></span> </button> <div class="knobs"><div class="knob"><div class="row"><label for="tempo">Tempo</label><output id="tempoOut">68</output></div><input id="tempo" type="range" min="44" max="150" step="1" value="68"> </div><div class="knob"><div class="row"><label for="density">Density</label><output id="densityOut">55%</output></div><input id="density" type="range" min="0" max="100" step="1" value="55"> </div><div class="knob"><div class="row"><label for="space">Space</label><output id="spaceOut">52%</output></div><input id="space" type="range" min="0" max="100" step="1" value="52"> </div><div class="knob"><div class="row"><label for="volume">Volume</label><output id="volumeOut">78%</output></div><input id="volume" type="range" min="0" max="100" step="1" value="78"> </div></div><div class="mini-actions"><button class="ghost" id="visualsBtn" type="button" title="Toggle visuals (V)" aria-pressed="true"><span class="vis-dot" aria-hidden="true"></span>Visuals</button> <button class="ghost" id="keyBtn" type="button" title="Random key (K)">New key</button> <button class="ghost" id="skipBtn" type="button" title="Next chord (S)">Skip</button> <button class="ghost theme-btn" id="themeBtn" type="button" title="Toggle light/dark theme" aria-label="Switch to light mode"></button> </div></div><div class="styles" id="styleRow" role="group" aria-label="Musical style"></div><div class="keys-wrap"><div class="keys" id="keys" aria-label="Playable piano keyboard"></div></div></section><footer><div class="footer-hint"><span><kbd>space</kbd> play</span> <span><kbd>←</kbd><kbd>→</kbd> style</span> <span><kbd>K</kbd> key</span> <span><kbd>S</kbd> skip</span> <span><kbd>V</kbd> visuals</span> <span>tap keys to play</span> </div><div>Web Audio · generated live, nothing pre-recorded</div></footer></div><script>
+"use strict";
+/* ------------------------------------------------------------------ *
+ * Core: constants, state, tiny helpers
+ * ------------------------------------------------------------------ */
+
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const BLACK_PCS = new Set([1, 3, 6, 8, 10]);
+
+/**
+ * Seven-note modes used by the styles. Keeping every scale seven notes long
+ * means chord building can always stack thirds by index, and the ninth is
+ * simply degree + 8 rather than a special case.
+ */
+const SCALES = {
+  major:         [0, 2, 4, 5, 7, 9, 11],
+  naturalMinor:  [0, 2, 3, 5, 7, 8, 10],
+  harmonicMinor: [0, 2, 3, 5, 7, 8, 11],
+  dorian:        [0, 2, 3, 5, 7, 9, 10],
+  phrygian:      [0, 1, 3, 5, 7, 8, 10],
+  lydian:        [0, 2, 4, 6, 7, 9, 11],
+  mixolydian:    [0, 2, 4, 5, 7, 9, 10]
+};
+
+/**
+ * Mutable performance state. This is deliberately a single object rather
+ * than a class: the scheduler, UI, and canvas all read the same truth.
+ * The performance itself is not serialised; only the four sliders and the
+ * mood are, each under its own `STORAGE_KEYS` entry, and `init()` restores
+ * them before the first chord is drawn. The key stays random per visit.
+ *
+ * Invariants:
+ *   - `root` is a MIDI note near C3; chord voicings live an octave above it.
+ *   - `chord` is always non-null while audio is scheduled.
+ *   - `nextTime` and `step` are only meaningful while `playing` is true.
+ */
+const S = {
+  playing: false,
+  // True during the audible hand-over between two styles; the scheduler
+  // pauses so the new mood starts on a clean bar.
+  transitioning: false,
+  styleId: "nocturne",
+  style: null,
+  bpm: 68,
+  density: 0.55,
+  space: 0.52,
+  volume: 0.78,
+  root: 48,
+  prevVoicing: null,
+  chord: null,
+  chordIndex: 0,
+  arpIndex: 0,
+  bassIndex: 0,
+  melodyPrev: null,
+  forceChord: true,
+  step: 0,
+  nextTime: 0,
+  timer: null,
+  startedAt: 0,
+  visuals: true,
+  palette: { a: "183,156,255", b: "124,92,255" },
+  sprites: null
+};
+
+// Keys for localStorage persistence
+const STORAGE_KEYS = {
+  volume: "ik-volume",
+  space: "ik-space",
+  density: "ik-density",
+  tempo: "ik-tempo",
+  styleId: "ik-style"
+};
+
+/**
+ * Load a persisted string setting, returning the default if unavailable.
+ *
+ * Separate from `loadNumber()` on purpose: the mood id is a word ("nocturne"),
+ * and coercing it with `Number()` yields NaN, which used to make `setStyle()`
+ * bail out and silently drop the saved style.
+ *
+ * @param {string} key
+ * @param {string} def
+ */
+function loadText(key, def) {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? def : v;
+  } catch (e) {
+    return def;
+  }
+}
+
+/**
+ * Load a persisted numeric setting, clamped to [lo, hi]. A missing key, an
+ * unparsable value or unavailable storage all fall back to `def`, so a partial
+ * or corrupt write can never leave the instrument silent or at 0 bpm.
+ *
+ * @param {string} key
+ * @param {number} def
+ * @param {number} lo
+ * @param {number} hi
+ */
+function loadNumber(key, def, lo, hi) {
+  let v;
+  try {
+    v = localStorage.getItem(key);
+  } catch (e) {
+    return def;
+  }
+  if (v === null) return def;
+  v = Number(v);
+  if (!isFinite(v)) return def;
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
+/**
+ * Persist a setting to localStorage.
+ * @param {string} key
+ * @param {number} value
+ */
+function saveSetting(key, value) {
+  try { localStorage.setItem(key, String(value)); } catch (e) {}
+}
+
+/**
+ * Audio graph handles. Everything here is null until `ensureAudio()` runs
+ * from a user gesture. `sources` is the pause/cleanup registry; `waves`
+ * caches the five PeriodicWave timbres.
+ */
+const A = {
+  ctx: null,
+  master: null,
+  dry: null,
+  reverbSend: null,
+  reverbWet: null,
+  conv: null,
+  irBuffer: null,
+  delay: null,
+  damp: null,
+  delayWet: null,
+  delaySend: null,
+  feedback: null,
+  analyser: null,
+  noise: null,
+  waves: {},
+  sources: new Set(),
+  waveData: null,
+  vinyl: null,
+  vinylGain: null,
+  vinylSend: null
+};
+
+/*
+ * PERFORMANCE NOTE — open investigation, left for a later pass.
+ *
+ * Measured (Nov 2026): with visuals off the page holds ~60 fps; with visuals
+ * on it tanks, worst frames around 85 ms. That A/B is not conclusive on its
+ * own, because `body.no-visuals` also removes the deck's backdrop-filter, so
+ * it compares "canvas + frosted glass" against "neither". The flags below
+ * exist to split those costs apart: ?noblur (glass only), ?dpr=N (fill rate),
+ * ?noaurora (the full-screen aurora blit), ?nofx (stars/waveform/rings/motes),
+ * with ?perf showing fps, worst frame, tick drift and the canvas scale.
+ *
+ * Once the flag that restores 60 fps is known, likely fixes in order:
+ *   1. aurora -> its own CSS-scaled canvas at 10 fps, removing the per-frame
+ *      full-screen blit from the 60 fps path;
+ *   2. cap the glow canvas at DPR 1.5 (it is a soft layer; DOM text stays
+ *      crisp), which cuts its pixel count by ~44 %;
+ *   3. batch stars into ~4 alpha buckets (90 fills -> 4), cap particles at
+ *      110 and halve the waveform points;
+ *   4. if ?noblur wins: keep live frost on the transport/style row and give
+ *      the keyboard its own gradient (or drop the radius 22 -> 10). The
+ *      frosted deck is a deliberate design choice, not an oversight.
+ */
+
+/**
+ * One-time diagnostics read from the query string, used to attribute a frame
+ * rate problem to one layer at a time. Flags compose, e.g.
+ * `?perf&noblur&dpr=1`; with no query string every field is false and the page
+ * behaves exactly as before. These are investigation tools, not settings.
+ *
+ *   perf      show the stats overlay
+ *   noblur    drop the deck's backdrop-filter only (visuals stay on)
+ *   noaurora  skip the aurora render and its full-screen blit
+ *   nofx      skip stars, waveform, rings and particles
+ *   dpr=N     cap the canvas backing store at N device pixels per CSS pixel
+ */
+const DIAG = (() => {
+  let search = "";
+  try {
+    search = location.search || "";
+  } catch (e) {
+    // No usable location (sandboxed frame): no flags.
+  }
+  const has = (name) =>
+    new RegExp("(?:^|[?&])" + name + "(?:[=&]|$)").test(search);
+  const value = (name) => {
+    const m = search.match(new RegExp("[?&]" + name + "=([^&]+)"));
+    return m ? Number(decodeURIComponent(m[1])) : NaN;
+  };
+  return {
+    perf: has("perf"),
+    noblur: has("noblur"),
+    noaurora: has("noaurora"),
+    nofx: has("nofx"),
+    dpr: value("dpr")
+  };
+})();
+
+// Applied here rather than in init() so the first paint already matches.
+if (DIAG.noblur && document.body) document.body.classList.add("no-blur");
+
+/**
+ * Diagnostics for the optional `?perf` overlay. When the flag is absent every
+ * field stays at zero and the only cost is the `PERF.on` check inside `tick()`,
+ * so the instrument's normal path is untouched.
+ *
+ * `drift` is the useful signal for "the page feels slow": the scheduler timer
+ * is nominally 25 ms, and any lateness is main-thread time stolen from it. It
+ * works whether or not the canvas loop is running, which matters because the
+ * canvas is not the bottleneck in minimal mode.
+ */
+const PERF = {
+  on: false,
+  panel: null,
+  observer: null,
+  // rAF cadence, sampled once per second.
+  frames: 0,
+  fps: 0,
+  worstFrame: 0,
+  lastFrame: 0,
+  rafId: 0,
+  // Scheduler health.
+  lastTick: 0,
+  drift: 0,
+  worstDrift: 0,
+  horizon: 0,
+  // Long tasks (>50 ms) with their start times, trimmed to the last 5 s.
+  longAt: [],
+  sampleAt: 0
+};
+
+/** Delay-line feedback at rest; pause drops it to zero so the loop drains. */
+const DELAY_FEEDBACK = 0.33;
+
+const els = {
+  play: document.getElementById("playBtn"),
+  live: document.getElementById("liveBadge"),
+  styleLabel: document.getElementById("styleLabel"),
+  chordName: document.getElementById("chordName"),
+  chordRoman: document.getElementById("chordRoman"),
+  chordNotes: document.getElementById("chordNotes"),
+  blurb: document.getElementById("blurb"),
+  styleRow: document.getElementById("styleRow"),
+  keys: document.getElementById("keys"),
+  tempo: document.getElementById("tempo"),
+  tempoOut: document.getElementById("tempoOut"),
+  density: document.getElementById("density"),
+  densityOut: document.getElementById("densityOut"),
+  space: document.getElementById("space"),
+  spaceOut: document.getElementById("spaceOut"),
+  volume: document.getElementById("volume"),
+  volumeOut: document.getElementById("volumeOut"),
+  keyBtn: document.getElementById("keyBtn"),
+  skipBtn: document.getElementById("skipBtn"),
+  visualsBtn: document.getElementById("visualsBtn"),
+  themeBtn: document.getElementById("themeBtn"),
+  deck: document.querySelector(".deck"),
+  canvas: document.getElementById("scene")
+};
+
+const REDUCED_MOTION = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+const VISUALS_KEY = "infinite-keys.visuals";
+// Shared with every other page on the site, so the choice carries across tools.
+const THEME_KEY = "tools-theme";
+/**
+ * True when the light theme is active. Read from the attribute the head script
+ * already set, so CSS and canvas never disagree about which stage is showing.
+ */
+let light = document.documentElement.getAttribute("data-theme") === "light";
+// A visible-but-unfocused tab can have its timers throttled just like a hidden
+// one. Track focus separately from visibility so `tick()` can queue ahead.
+let tabFocused = typeof document.hasFocus === "function" ? document.hasFocus() : true;
+const keyEls = new Map();
+/**
+ * Horizontal centre of each on-screen key, in viewport pixels, cached when the
+ * keyboard is built. Note particles spawn above the key that sounded, and
+ * reading layout for every note would be avoidable main-thread work.
+ */
+const keyCenters = new Map();
+/**
+ * Outer edges of the keybed plus the lowest/highest MIDI note it shows, also
+ * cached in `buildKeyboard()`. Out-of-range notes have no centre of their own,
+ * so they snap to the nearest displayed key and are clamped to these edges —
+ * otherwise a high melody note would spawn a mote past the last key.
+ */
+let keyBed = null;
+/**
+ * Upcoming visual events, timestamped on the AudioContext clock. Notes are
+ * queued by `playVoice()` and drained by the canvas loop, which is why the
+ * lights never run ahead of the sound.
+ */
+const visual = [];
+
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const rand = (lo, hi) => lo + Math.random() * (hi - lo);
+const chance = (p) => Math.random() < p;
+const pick = (arr) => arr[(Math.random() * arr.length) | 0];
+const mtof = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+const pcOf = (midi) => ((midi % 12) + 12) % 12;
+const pcName = (midi) => NOTE_NAMES[pcOf(midi)];
+const noteName = (midi) => pcName(midi) + (Math.floor(midi / 12) - 1);
+const isBlackPc = (pc) => BLACK_PCS.has(pcOf(pc));
+
+/**
+ * Convert `#rrggbb` (or `#rgb`) to the `"r,g,b"` form used by the
+ * `rgba(var(--accent-rgb), alpha)` convention in the stylesheet and canvas.
+ */
+function hexToRgb(hex) {
+  const h = hex.replace("#", "");
+  const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+  return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+}
+
+/**
+ * `#rrggbb` → `{h, s, l}` with `h` in degrees and `s`/`l` in 0–1.
+ * Used only for the light theme's accent derivation.
+ */
+function hexToHsl(hex) {
+  const h = hex.replace("#", "");
+  const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+  const r = ((n >> 16) & 255) / 255;
+  const g = ((n >> 8) & 255) / 255;
+  const b = (n & 255) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  let hue = 0;
+  if (d) {
+    if (max === r) hue = ((g - b) / d + (g < b ? 6 : 0)) * 60;
+    else if (max === g) hue = ((b - r) / d + 2) * 60;
+    else hue = ((r - g) / d + 4) * 60;
+  }
+  const s = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
+  return { h: hue, s, l };
+}
+
+/** `{h, s, l}` → `#rrggbb`. Inverse of `hexToHsl`. */
+function hslToHex(h, s, l) {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; }
+  else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  const hex = (v) => Math.round((v + m) * 255).toString(16).padStart(2, "0");
+  return `#${hex(r)}${hex(g)}${hex(b)}`;
+}
+
+/**
+ * Every mood carries a pastel accent tuned for a black stage; the same
+ * colours on white are washed out and, under `multiply`, nearly invisible.
+ * Rather than hand-picking thirty light variants, clamp each accent into a
+ * legible band: dark enough to read on white, saturated enough to stay
+ * recognisable as its mood.
+ *
+ * @param {string} hex accent from `STYLES`
+ * @returns {string} `#rrggbb` safe for the light stage
+ */
+function accentFor(hex) {
+  if (!light) return hex;
+  const { h, s, l } = hexToHsl(hex);
+  return hslToHex(h, Math.max(s, 0.62), Math.min(l, 0.42));
+}
+
+/**
+ * Paint the unfilled portion of a range input by writing a `--fill`
+ * custom property. The track gradient in CSS reads it, so the coloured
+ * part always follows the thumb without extra DOM.
+ */
+function setSliderFill(input) {
+  const pct = ((input.value - input.min) / (input.max - input.min)) * 100;
+  input.style.setProperty("--fill", pct + "%");
+}
+/* ------------------------------------------------------------------ *
+ * Audio engine: a small additive piano, procedural room, tape delay
+ * ------------------------------------------------------------------ */
+
+/**
+ * Harmonic amplitude tables, index 0 unused (DC). Real piano spectra are
+ * not perfectly harmonic, but a handful of decaying partials plus per-note
+ * detuning gets surprisingly close. `soft` is for pads and bass, `bright`
+ * for synthwave, `synth` for the chiptune mood, and `bell` — odd partials
+ * only — gives the music box its hollow, metallic strike.
+ */
+const WAVE_SPECS = {
+  piano:  [0, 1, .52, .31, .18, .11, .075, .05, .035, .025, .018, .012, .009, .006, .004, .003],
+  soft:   [0, 1, .33, .13, .055, .024, .014, .008, .005, .003],
+  bright: [0, 1, .70, .48, .33, .24, .18, .13, .10, .075, .055, .04, .03, .022, .016, .012],
+  synth:  [0, 1, .50, .36, .28, .22, .18, .15, .12, .10, .08, .07, .06, .05, .04, .03],
+  bell:   [0, 1, 0, .42, 0, .22, 0, .14, 0, .095, 0, .066, 0, .046, 0, .032]
+};
+
+/**
+ * Build a stereo impulse response for the convolution reverb.
+ *
+ * There is no audio file to ship, so the room is synthesised: filtered
+ * white noise under a `(1 - t) ^ decay` envelope, plus a handful of
+ * discrete early reflections. Short IRs read as a small studio; long,
+ * dark ones read as a hall. `decay` controls how quickly the tail dies.
+ *
+ * @param {BaseAudioContext} ctx
+ * @param {number} seconds length of the tail
+ * @param {number} decay exponent; larger = faster decay
+ * @returns {AudioBuffer} stereo impulse response
+ */
+function makeIR(ctx, seconds, decay) {
+  const rate = ctx.sampleRate;
+  const len = Math.max(1, Math.floor(rate * seconds));
+  const buf = ctx.createBuffer(2, len, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buf.getChannelData(ch);
+    let smooth = 0;
+    for (let i = 0; i < len; i++) {
+      const t = i / len;
+      const env = Math.pow(1 - t, decay);
+      smooth = smooth * 0.76 + (Math.random() * 2 - 1) * 0.24;
+      data[i] = smooth * env;
+    }
+    // a few early reflections so the room has a shape
+    for (let k = 0; k < 7; k++) {
+      const at = Math.floor(rate * (0.012 + k * 0.019 + Math.random() * 0.01));
+      if (at < len) data[at] += (Math.random() * 2 - 1) * 0.35 * Math.pow(0.72, k);
+    }
+  }
+  return buf;
+}
+
+/**
+ * Create a reusable mono white-noise buffer. Percussion and the piano's
+ * hammer transient share this buffer, so only one copy is ever allocated.
+ *
+ * @param {BaseAudioContext} ctx
+ * @param {number} seconds
+ * @returns {AudioBuffer}
+ */
+function makeNoise(ctx, seconds) {
+  const rate = ctx.sampleRate;
+  const len = Math.floor(rate * seconds);
+  const buf = ctx.createBuffer(1, len, rate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  return buf;
+}
+
+/**
+ * Synthesise the lo-fi vinyl bed: low-level filtered noise plus rare,
+ * randomly spaced crackles. It is looped at very low gain by `startVinyl`.
+ * Two channels are generated independently so the noise feels wide.
+ *
+ * @param {BaseAudioContext} ctx
+ * @returns {AudioBuffer} five-second stereo loop
+ */
+function makeVinylBuffer(ctx) {
+  const rate = ctx.sampleRate;
+  const len = Math.floor(rate * 5);
+  const buf = ctx.createBuffer(2, len, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buf.getChannelData(ch);
+    let smooth = 0;
+    for (let i = 0; i < len; i++) {
+      smooth = smooth * 0.55 + (Math.random() * 2 - 1) * 0.45;
+      let v = smooth * 0.05;
+      if (Math.random() < 0.00055) v += (Math.random() * 2 - 1) * 0.7; // crackle
+      data[i] = v;
+    }
+  }
+  return buf;
+}
+
+/**
+ * Pre-compute the additive oscillator spectra used by every voice.
+ * `PeriodicWave` turns a harmonic amplitude table into one oscillator,
+ * which is far cheaper than summing a dozen sine oscillators per note.
+ * The tables are deliberately static: timbre is chosen by style, while
+ * velocity and the filter envelope supply the moment-to-moment colour.
+ *
+ * @param {BaseAudioContext} ctx
+ */
+function makeWaves(ctx) {
+  for (const [name, amps] of Object.entries(WAVE_SPECS)) {
+    const real = new Float32Array(amps.length);
+    const imag = new Float32Array(amps.length);
+    for (let i = 1; i < amps.length; i++) imag[i] = amps[i];
+    A.waves[name] = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+  }
+}
+
+/**
+ * Lazily build the audio graph on the first user gesture.
+ *
+ * Browsers refuse to start an AudioContext before interaction, so nothing
+ * is allocated on page load. The graph is intentionally simple:
+ *
+ *   voices -> dry -----------------------+
+ *          -> reverb send -> conv -> wet +-> analyser -> master -> compressor -> out
+ *          -> delay send  -> delay -> wet+
+ *
+ * The analyser sits before the master gain on purpose: the waveform ribbon
+ * visualises the performance, not the volume slider, so turning the room down
+ * does not shrink it. `drawWave()` handles the one exception — at volume zero
+ * the stage is silent, so the ribbon falls back to its flat baseline.
+ *
+ * The compressor is the safety net for dense chords; the analyser is only
+ * used to draw the faint waveform ribbon.
+ *
+ * @returns {AudioContext}
+ */
+function ensureAudio() {
+  if (A.ctx) return A.ctx;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  let ctx;
+  try {
+    // "playback" asks the browser for a larger buffer than "interactive".
+    // For a continuous generative piece, stability beats a few ms of latency.
+    ctx = new Ctx({ latencyHint: "playback" });
+  } catch (e) {
+    ctx = new Ctx();
+  }
+  A.ctx = ctx;
+
+  // Mobile OSes can interrupt or suspend the context (calls, notifications,
+  // screen lock). Try to resume if it happens mid-performance, but throttle
+  // attempts so a hard failure cannot turn into a resume loop.
+  let lastWake = 0;
+  ctx.onstatechange = () => {
+    if (!S.playing || ctx.state === "running") return;
+    const now = performance.now();
+    if (now - lastWake < 2500) return;
+    lastWake = now;
+    ctx.resume().catch(() => {});
+  };
+
+  const master = ctx.createGain();
+  master.gain.value = S.volume * 0.9;
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -16;
+  comp.knee.value = 26;
+  comp.ratio.value = 3.2;
+  comp.attack.value = 0.004;
+  comp.release.value = 0.26;
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.82;
+
+  // Everything is summed into the analyser first, then the master applies the
+  // volume / pause fade, then the compressor catches peaks. That order is what
+  // keeps the ribbon level independent of the volume slider.
+  analyser.connect(master);
+  master.connect(comp);
+  comp.connect(ctx.destination);
+  A.master = master;
+  A.analyser = analyser;
+  A.waveData = new Float32Array(analyser.fftSize);
+
+  const dry = ctx.createGain();
+  dry.gain.value = 1;
+  dry.connect(analyser);
+  A.dry = dry;
+
+  const conv = ctx.createConvolver();
+  conv.normalize = true;
+  const smallScreen = window.innerWidth < 760;
+  // Keep a reference to the impulse response: re-assigning it to `buffer`
+  // resets the convolver's internal state, which is how pause flushes the
+  // reverb tail (see `flushTails`).
+  const irBuffer = makeIR(ctx, smallScreen ? 1.9 : 2.8, smallScreen ? 2.8 : 2.3);
+  conv.buffer = irBuffer;
+  A.conv = conv;
+  A.irBuffer = irBuffer;
+  const reverbWet = ctx.createGain();
+  reverbWet.gain.value = 0.35;
+  conv.connect(reverbWet);
+  reverbWet.connect(analyser);
+  const reverbSend = ctx.createGain();
+  reverbSend.gain.value = 1;
+  reverbSend.connect(conv);
+  A.reverbWet = reverbWet;
+  A.reverbSend = reverbSend;
+
+  const delayWet = ctx.createGain();
+  delayWet.gain.value = 0.16;
+  delayWet.connect(analyser);
+  const delaySend = ctx.createGain();
+  delaySend.gain.value = 1;
+  A.delayWet = delayWet;
+  A.delaySend = delaySend;
+  buildDelayLine();
+
+  A.noise = makeNoise(ctx, 2);
+  A.vinylBuf = makeVinylBuffer(ctx);
+  makeWaves(ctx);
+  // Nothing is sounding yet, so there is no echo to bend; set the style's
+  // delay time directly instead of gliding up from the 0.32 s default.
+  updateSpace(true);
+  return ctx;
+}
+
+/**
+ * Translate the Space slider and the current style into reverb/delay send
+ * levels. The style supplies a base amount (a nocturne wants less room than
+ * an ambient piece); the slider scales it without ever letting the wet
+ * signal overpower the dry piano.
+ *
+ * @param {boolean} [instant] set the delay time without a glide. Resuming from
+ *   pause must use this: ramping a DelayNode's `delayTime` resamples its
+ *   buffer, which pitch-bends every echo already inside it (the "tape warble"
+ *   heard right after unpausing). A mood change still glides, because there
+ *   the bend is part of the transition and the master is dipped anyway.
+ */
+function updateSpace(instant) {
+  if (!A.ctx) return;
+  const st = S.style || {};
+  const now = A.ctx.currentTime;
+  const wet = clamp((0.025 + S.space * 0.9) * (0.3 + (st.reverb || 0.4) * 0.95), 0, 0.95);
+  A.reverbWet.gain.setTargetAtTime(wet, now, 0.08);
+  const dw = clamp((st.delay || 0) * (0.35 + S.space * 1.1), 0, 0.62);
+  A.delayWet.gain.setTargetAtTime(dw, now, 0.08);
+  if (st.delayTime) {
+    if (instant) A.delay.delayTime.setValueAtTime(st.delayTime, now);
+    else A.delay.delayTime.setTargetAtTime(st.delayTime, now, 0.2);
+  }
+}
+
+/**
+ * Remember a playing source so `stopAllVoices()` can silence it on pause.
+ * The `onended` hook releases the reference *and* disconnects the node chain,
+ * keeping the graph bounded no matter how long the piece runs. Without the
+ * disconnect, a finished source's gain/filter/send nodes stay reachable from
+ * the buses and accumulate over an hours-long session.
+ *
+ * @param {AudioScheduledSourceNode} src
+ * @param {...AudioNode} nodes nodes to disconnect when the source ends
+ */
+function trackSource(src, ...nodes) {
+  A.sources.add(src);
+  src.onended = () => {
+    A.sources.delete(src);
+    for (const node of nodes) {
+      if (!node) continue;
+      try { node.disconnect(); } catch (e) {}
+    }
+  };
+}
+
+/**
+ * Schedule one piano-ish note.
+ *
+ * Each note uses two slightly detuned oscillators sharing one filter and
+ * amplitude envelope. The detune produces the slow beating of real unison
+ * strings; the lowpass opens with velocity and closes over the note's life,
+ * which is most of what makes a synth read as "piano" rather than "organ".
+ *
+ * Envelopes use exponential ramps (never to exactly zero) to avoid clicks.
+ * A short band-passed noise burst stands in for the hammer on accented
+ * notes. Long, soft attacks are selected by pad voices through `opts`.
+ *
+ * @param {number} midi note number (60 = middle C)
+ * @param {number} when AudioContext time to start
+ * @param {number} durBeats audible duration in beats
+ * @param {number} vel 0..1 velocity (also drives brightness)
+ * @param {object} [opts] timbre, level, attack, release, sustain, detune, pan
+ */
+function playVoice(midi, when, durBeats, vel, opts = {}) {
+  if (!A.ctx) return;
+  const ctx = A.ctx;
+  const t = Math.max(when, ctx.currentTime + 0.003);
+  const spb = 60 / Math.max(30, S.bpm);
+  const dur = Math.max(0.09, durBeats * spb);
+  const f = mtof(midi);
+  const timbre = opts.timbre || (S.style && S.style.timbre) || "piano";
+  const wave = A.waves[timbre] || A.waves.piano;
+  const level = opts.level == null ? 0.6 : opts.level;
+  const attack = opts.attack == null ? 0.006 : opts.attack;
+  const release = opts.release == null ? 0.38 : opts.release;
+  const sustain = opts.sustain == null ? 0.24 : opts.sustain;
+  const detune = opts.detune == null ? (timbre === "soft" ? 4.5 : 2.2) : opts.detune;
+  const pan = opts.pan == null ? 0 : opts.pan;
+
+  // The scheduler runs ahead of the audio clock. Enqueue a visual event at the
+  // exact audio time instead of spawning particles immediately, so light and
+  // sound stay locked together even when the look-ahead buffer grows.
+  if (!opts.noVisual) visual.push({ t, kind: "note", midi, vel });
+
+  const amp = ctx.createGain();
+  const filter = ctx.createBiquadFilter();
+  const out = ctx.createGain();
+  const panner = ctx.createStereoPanner();
+
+  out.gain.value = level;
+  panner.pan.value = clamp(pan, -1, 1);
+  filter.type = "lowpass";
+  filter.Q.value = 0.45;
+
+  const cutBase = clamp(f * (timbre === "bright" ? 9 : 6.5) * (0.55 + vel), 620, 14000);
+  const mid = t + attack + Math.max(0.05, dur * 0.32);
+  const end = t + Math.max(attack + 0.08, dur);
+  const stop = end + release;
+
+  filter.frequency.setValueAtTime(cutBase, t);
+  filter.frequency.exponentialRampToValueAtTime(Math.max(420, cutBase * 0.28), end);
+
+  amp.gain.setValueAtTime(0.0001, t);
+  amp.gain.exponentialRampToValueAtTime(Math.max(0.0002, vel), t + attack);
+  amp.gain.exponentialRampToValueAtTime(Math.max(0.0002, vel * sustain), mid);
+  amp.gain.exponentialRampToValueAtTime(0.0001, end);
+
+  const oscs = [];
+  for (const cents of [-detune, detune]) {
+    const osc = ctx.createOscillator();
+    osc.setPeriodicWave(wave);
+    osc.frequency.value = f;
+    osc.detune.value = cents;
+    osc.connect(filter);
+    osc.start(t);
+    osc.stop(stop + 0.04);
+    A.sources.add(osc);
+    oscs.push(osc);
+  }
+
+  filter.connect(amp);
+  amp.connect(out);
+  out.connect(panner);
+  panner.connect(A.dry);
+  panner.connect(A.reverbSend);
+  panner.connect(A.delaySend);
+
+  const last = oscs[oscs.length - 1];
+  last.onended = () => {
+    for (const o of oscs) A.sources.delete(o);
+    try { panner.disconnect(); out.disconnect(); amp.disconnect(); filter.disconnect(); } catch (e) {}
+  };
+
+  if (vel > 0.5 && timbre !== "soft") {
+    noiseHit(t, clamp(f * 2.6, 900, 5200), 1.0, 0.03 * vel * level, 0.045, 0.25);
+  }
+}
+
+/**
+ * Fire a short filtered noise burst. Used for the hammer transient and for
+ * every acoustic-ish percussion voice; `reverb` is a per-hit send amount so
+ * hats can stay dry while brushes sit further back in the room.
+ *
+ * @param {number} when start time
+ * @param {number} freq band-pass centre
+ * @param {number} q filter resonance
+ * @param {number} gain peak gain
+ * @param {number} dur seconds
+ * @param {number} [reverb=0.5] send level, 0..1
+ */
+function noiseHit(when, freq, q, gain, dur, reverb = 0.5) {
+  if (!A.ctx || !A.noise) return;
+  const ctx = A.ctx;
+  const t = Math.max(when, ctx.currentTime + 0.002);
+  const src = ctx.createBufferSource();
+  src.buffer = A.noise;
+  const filter = ctx.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.value = clamp(freq, 80, 12000);
+  filter.Q.value = q;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t + 0.003);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.02, dur));
+  src.connect(filter);
+  filter.connect(g);
+  g.connect(A.dry);
+  let send = null;
+  if (reverb > 0) {
+    send = ctx.createGain();
+    send.gain.value = reverb;
+    g.connect(send);
+    send.connect(A.reverbSend);
+  }
+  src.start(t);
+  src.stop(t + Math.max(0.03, dur) + 0.03);
+  trackSource(src, filter, g, send);
+}
+
+/**
+ * Soft sine kick with a fast pitch drop. Deliberately short and quiet: it
+ * is a pulse for the arpeggios, not a dance-music kick.
+ *
+ * @param {number} when
+ * @param {number} [vel=0.65]
+ */
+function kick(when, vel = 0.65) {
+  if (!A.ctx) return;
+  const ctx = A.ctx;
+  const t = Math.max(when, ctx.currentTime + 0.002);
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(150, t);
+  osc.frequency.exponentialRampToValueAtTime(43, t + 0.12);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.5 * vel, t + 0.006);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+  osc.connect(g);
+  g.connect(A.dry);
+  osc.start(t);
+  osc.stop(t + 0.38);
+  trackSource(osc, g);
+}
+
+/**
+ * Lo-fi snare: band-passed noise for the brush/body plus a quiet triangle
+ * thump for weight. Both layers are short so the reverb tail does the work.
+ *
+ * @param {number} when
+ * @param {number} [vel=0.5]
+ */
+function snare(when, vel = 0.5) {
+  noiseHit(when, 1850, 0.8, 0.12 * vel, 0.15, 0.7);
+  if (!A.ctx) return;
+  const ctx = A.ctx;
+  const t = Math.max(when, ctx.currentTime + 0.002);
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(190, t);
+  osc.frequency.exponentialRampToValueAtTime(120, t + 0.09);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.07 * vel, t + 0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+  osc.connect(g);
+  g.connect(A.dry);
+  osc.start(t);
+  osc.stop(t + 0.12);
+  trackSource(osc, g);
+}
+
+/**
+ * Closed hi-hat: very short high-passed noise, kept nearly dry.
+ *
+ * @param {number} when
+ * @param {number} [vel=0.3]
+ */
+function hat(when, vel = 0.3) {
+  noiseHit(when, 7800, 1.2, 0.055 * vel, 0.045, 0.15);
+}
+/**
+ * Bossa shaker: slightly longer, softer noise than the hat, with a little
+ * room send so it shimmers behind the comping.
+ *
+ * @param {number} when
+ * @param {number} [vel=0.28]
+ */
+function shaker(when, vel = 0.28) {
+  noiseHit(when, 5200, 1.6, 0.042 * vel, 0.085, 0.2);
+}
+/**
+ * Brushed snare sweep used by the jazz style: low-Q band-passed noise with
+ * a longer decay, suggesting a wire brush rather than a stick.
+ *
+ * @param {number} when
+ * @param {number} [vel=0.4]
+ */
+function brush(when, vel = 0.4) {
+  noiseHit(when, 1500, 0.6, 0.075 * vel, 0.22, 0.6);
+}
+
+/**
+ * Start the looping vinyl bed. Safe to call repeatedly; the existing loop
+ * is reused. The gain ramps in slowly so switching to Lo-Fi mid-piece does
+ * not produce a click.
+ */
+function startVinyl() {
+  if (!A.ctx || A.vinyl) return;
+  const ctx = A.ctx;
+  const src = ctx.createBufferSource();
+  src.buffer = A.vinylBuf;
+  src.loop = true;
+  const g = ctx.createGain();
+  g.gain.value = 0.0001;
+  src.connect(g);
+  g.connect(A.dry);
+  const send = ctx.createGain();
+  send.gain.value = 0.3;
+  g.connect(send);
+  send.connect(A.reverbSend);
+  src.start();
+  g.gain.linearRampToValueAtTime(0.045, ctx.currentTime + 1.2);
+  A.vinyl = src;
+  A.vinylGain = g;
+  A.vinylSend = send;
+}
+
+/**
+ * Fade and dispose of the vinyl loop. The source is stopped slightly after
+ * the gain reaches silence so the fade is actually audible.
+ */
+function stopVinyl() {
+  if (!A.vinyl || !A.ctx) return;
+  const now = A.ctx.currentTime;
+  const src = A.vinyl;
+  const g = A.vinylGain;
+  const send = A.vinylSend;
+  try {
+    g.gain.cancelScheduledValues(now);
+    g.gain.setValueAtTime(g.gain.value || 0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+    src.stop(now + 0.4);
+    src.onended = () => {
+      try { g.disconnect(); } catch (e) {}
+      try { send.disconnect(); } catch (e) {}
+    };
+  } catch (e) {}
+  A.vinyl = null;
+  A.vinylGain = null;
+  A.vinylSend = null;
+}
+
+/**
+ * Immediately stop every tracked source. Called on pause after the master
+ * has faded down; stopping sources while they are audible would click.
+ */
+function stopAllVoices() {
+  if (!A.ctx) return;
+  const now = A.ctx.currentTime;
+  for (const src of A.sources) {
+    try { src.stop(now); } catch (e) {}
+  }
+  A.sources.clear();
+}
+
+/**
+ * (Re)create the tape-delay line and wire it between the delay send and the
+ * delay return.
+ *
+ * It exists as a function because pause has to *rebuild* the line: a
+ * DelayNode's buffer keeps ringing after its input goes quiet, and muting the
+ * return is not enough — re-opening it later would replay up to a full delay
+ * time of the phrase before the pause. Replacing the node is the only way to
+ * empty that buffer, and it is cheap next to the convolver reset.
+ */
+function buildDelayLine() {
+  const ctx = A.ctx;
+  const delay = ctx.createDelay(1.5);
+  delay.delayTime.value = 0.32;
+  const damp = ctx.createBiquadFilter();
+  damp.type = "lowpass";
+  damp.frequency.value = 2400;
+  const feedback = ctx.createGain();
+  feedback.gain.value = DELAY_FEEDBACK;
+  delay.connect(damp);
+  damp.connect(feedback);
+  feedback.connect(delay);
+  delay.connect(A.delayWet);
+  // The send has exactly one destination; disconnecting it first keeps a
+  // rebuilt line from leaving the previous one attached (and alive).
+  A.delaySend.disconnect();
+  A.delaySend.connect(delay);
+  A.delay = delay;
+  A.damp = damp;
+  A.feedback = feedback;
+}
+
+/**
+ * Silence the effect buses after the sources stop.
+ *
+ * Stopping sources is not enough to make pause silent: the convolver keeps
+ * emitting its impulse-response tail for seconds and the delay line keeps
+ * recirculating echoes. If the master is later raised while those tails are
+ * still alive, the previous phrase's reverb reappears out of a silent pause.
+ * So the wet returns are muted, re-assigning the impulse response resets the
+ * convolver's internal state, and the delay line is rebuilt empty.
+ */
+function flushTails() {
+  if (!A.ctx) return;
+  const t = A.ctx.currentTime;
+  A.reverbWet.gain.setValueAtTime(0, t);
+  A.delayWet.gain.setValueAtTime(0, t);
+  if (A.conv && A.irBuffer) A.conv.buffer = A.irBuffer;
+  for (const n of [A.delay, A.damp, A.feedback]) {
+    try { n.disconnect(); } catch (e) {}
+  }
+  buildDelayLine();
+}
+
+/**
+ * Undo `flushTails()` before audio becomes audible again: `updateSpace()`
+ * brings both wet returns back, and the rebuilt delay line is already wired.
+ */
+function armTails() {
+  if (!A.ctx) return;
+  // Instant, not glided: the delay line was just rebuilt at its default 0.32 s
+  // (or is still at a previous style's time), so a ramp here bends the pitch
+  // of every echo for the first second after unpausing.
+  updateSpace(true);
+}
+/* ------------------------------------------------------------------ *
+ * Music: styles, harmony, voicing, melodic material
+ * ------------------------------------------------------------------ */
+
+/**
+ * Style definitions are pure data. The scheduler reads these fields and
+ * never branches on a style id, so adding a mood means adding an object.
+ *
+ * Common fields:
+ *   bpm, swing, scale, progression (scale degrees 0..6), wander,
+ *   chordSteps (16ths per chord), barSteps (16ths per bar, default 16),
+ *   seventh/ninth probabilities,
+ *   center (preferred voicing register), timbre, wide (octave spread),
+ *   accent/accent2 (UI palette), reverb/delay/delayTime, vinyl,
+ *   density/space (0..1 slider positions the mood starts with).
+ *
+ * `barSteps` only matters to moods that are not in 4/4. The scheduler uses it
+ * as the modulus for the percussion/chord grids, so a waltz can lay out a
+ * twelve-sixteenth bar without a second code path; everything else (swing,
+ * arp rate, melody rate, chord changes) is already measured in global 16ths.
+ *
+ * Layer fields:
+ *   arp    every, pattern (up/down/updown/random), octaves, prob, vel,
+ *          dur (beats), level.
+ *   bass   hits (16th positions), mode (root/rootFifth/octave/walk), vel,
+ *          dur, level.
+ *   melody every, prob, vel, dur, level.
+ *   chord  hits, prob, vel, dur, level (block/comping chords).
+ *   pad    on, vel, level, attack, release, stretch (chord-window multiplier).
+ *   perc   kick/snare/brush/shaker/hat pattern data.
+ *
+ * `tap` is gone on purpose: a key the visitor plays by hand imitates the
+ * mood's own lead layer (melody, else arp, else chord, else pad), so their
+ * notes come out of the same instrument as the generated ones instead of a
+ * parallel preset that only sounded similar.
+ */
+const STYLES = [
+  {
+    id: "nocturne", name: "Nocturne", blurb: "Romantic minor-key reverie",
+    bpm: 68, swing: 0.03, scale: "harmonicMinor",
+    density: 0.55, space: 0.55,
+    progression: [0, 5, 3, 4, 0, 5, 6, 4], wander: 0.20, chordSteps: 16,
+    seventh: 0.30, ninth: 0.04, center: 66, timbre: "piano", wide: false,
+    accent: "#b79cff", accent2: "#7c5cff", reverb: 0.62, delay: 0.05, delayTime: 0.36, vinyl: false,
+    layers: {
+      arp:    { every: 2, pattern: "updown", octaves: 2, prob: 0.88, vel: 0.34, dur: 0.55, level: 0.62 },
+      bass:   { hits: [0, 8], mode: "rootFifth", vel: 0.50, dur: 1.8, level: 0.60 },
+      melody: { every: 4, prob: 0.50, vel: 0.36, dur: 1.4, level: 0.55 },
+      chord:  { hits: [], prob: 0, vel: 0.30, dur: 1.0, level: 0.50 },
+      pad:    { on: true, vel: 0.20, level: 0.28, attack: 0.9, release: 2.2 },
+      perc:   {}
+    }
+  },
+  {
+    id: "lofi", name: "Lo-Fi", blurb: "Dusty seventh chords, swung and half-asleep",
+    bpm: 76, swing: 0.17, scale: "dorian",
+    density: 0.55, space: 0.40,
+    progression: [0, 3, 5, 4, 1, 4, 0, 5], wander: 0.35, chordSteps: 16,
+    seventh: 0.85, ninth: 0.20, center: 64, timbre: "soft", wide: false,
+    accent: "#8fd6c9", accent2: "#3a9d8a", reverb: 0.35, delay: 0.08, delayTime: 0.40, vinyl: true,
+    layers: {
+      arp:    { every: 4, pattern: "up", octaves: 1, prob: 0.35, vel: 0.22, dur: 0.8, level: 0.45 },
+      bass:   { hits: [0, 6, 10], mode: "root", vel: 0.42, dur: 1.3, level: 0.60 },
+      melody: { every: 4, prob: 0.22, vel: 0.26, dur: 1.2, level: 0.45 },
+      chord:  { hits: [0, 6, 10], prob: 0.90, vel: 0.30, dur: 1.1, level: 0.55 },
+      pad:    { on: false, vel: 0, level: 0, attack: 0.6, release: 1.2 },
+      perc:   { kick: [0, 8], snare: [4, 12], hat: { every: 2, prob: 0.50, vel: 0.35 } }
+    }
+  },
+  {
+    id: "ambient", name: "Ambient", blurb: "Slow lydian air, suspended in a very large room",
+    bpm: 52, swing: 0, scale: "lydian",
+    density: 0.35, space: 0.80,
+    progression: [0, 4, 1, 5, 2, 0, 3, 5], wander: 0.40, chordSteps: 32,
+    seventh: 0.50, ninth: 0.30, center: 68, timbre: "soft", wide: true,
+    accent: "#9ad7ff", accent2: "#5a7cff", reverb: 0.90, delay: 0.22, delayTime: 0.55, vinyl: false,
+    layers: {
+      arp:    { every: 6, pattern: "random", octaves: 2, prob: 0.30, vel: 0.16, dur: 2.2, level: 0.34 },
+      bass:   { hits: [0], mode: "root", vel: 0.30, dur: 6, level: 0.50 },
+      melody: { every: 8, prob: 0.24, vel: 0.20, dur: 3, level: 0.40 },
+      chord:  { hits: [], prob: 0, vel: 0.2, dur: 3, level: 0.3 },
+      pad:    { on: true, vel: 0.22, level: 0.30, attack: 3, release: 4, stretch: 1.15 },
+      perc:   {}
+    }
+  },
+  {
+    id: "jazz", name: "Jazz Café", blurb: "ii–V–I changes, walking bass, brushed drums",
+    bpm: 98, swing: 0.32, scale: "major",
+    density: 0.65, space: 0.35,
+    progression: [1, 4, 0, 5, 1, 4, 3, 4], wander: 0.18, chordSteps: 16,
+    seventh: 0.95, ninth: 0.35, center: 64, timbre: "piano", wide: false,
+    accent: "#ffc58a", accent2: "#f07b3f", reverb: 0.30, delay: 0.06, delayTime: 0.30, vinyl: false,
+    layers: {
+      arp:    { every: 4, pattern: "random", octaves: 1, prob: 0.18, vel: 0.18, dur: 0.5, level: 0.35 },
+      bass:   { hits: [0, 4, 8, 12], mode: "walk", vel: 0.40, dur: 0.9, level: 0.62 },
+      melody: { every: 2, prob: 0.18, vel: 0.30, dur: 0.7, level: 0.50 },
+      chord:  { hits: [0, 6, 10], prob: 0.78, vel: 0.28, dur: 0.7, level: 0.50 },
+      pad:    { on: false, vel: 0, level: 0, attack: 0.6, release: 1.2 },
+      perc:   { kick: [0, 10], brush: [4, 12], hat: { every: 2, prob: 0.45, vel: 0.20 } }
+    }
+  },
+  {
+    id: "synthwave", name: "Synthwave", blurb: "Neon arpeggios and a steady midnight pulse",
+    bpm: 108, swing: 0, scale: "naturalMinor",
+    density: 0.70, space: 0.30,
+    progression: [0, 5, 2, 6, 0, 4, 5, 6], wander: 0.20, chordSteps: 16,
+    seventh: 0.35, ninth: 0.10, center: 62, timbre: "bright", wide: false,
+    accent: "#ff7ad9", accent2: "#6d4dff", reverb: 0.25, delay: 0.32, delayTime: 0.38, vinyl: false,
+    layers: {
+      arp:    { every: 1, pattern: "up", octaves: 2, prob: 0.96, vel: 0.20, dur: 0.35, level: 0.40 },
+      bass:   { hits: [0, 4, 8, 12], mode: "root", vel: 0.40, dur: 0.5, level: 0.60 },
+      melody: { every: 4, prob: 0.25, vel: 0.24, dur: 1.0, level: 0.42 },
+      chord:  { hits: [0, 8], prob: 1, vel: 0.18, dur: 1.8, level: 0.35 },
+      pad:    { on: true, vel: 0.16, level: 0.22, attack: 0.6, release: 1.4 },
+      perc:   { kick: [0, 8], snare: [4, 12], hat: { every: 1, prob: 0.60, vel: 0.18 } }
+    }
+  },
+  {
+    id: "minimal", name: "Minimal", blurb: "One cell, repeated until it starts to shimmer",
+    bpm: 84, swing: 0, scale: "dorian",
+    density: 0.55, space: 0.45,
+    progression: [0, 0, 3, 2, 0, 5, 3, 4], wander: 0.10, chordSteps: 16,
+    seventh: 0.20, ninth: 0, center: 66, timbre: "piano", wide: false,
+    accent: "#c9f27c", accent2: "#4cc9a0", reverb: 0.40, delay: 0.18, delayTime: 0.34, vinyl: false,
+    layers: {
+      arp:    { every: 1, pattern: "updown", octaves: 2, prob: 0.98, vel: 0.18, dur: 0.3, level: 0.34 },
+      bass:   { hits: [0, 8], mode: "rootFifth", vel: 0.34, dur: 1.6, level: 0.55 },
+      melody: { every: 8, prob: 0.25, vel: 0.20, dur: 2.0, level: 0.36 },
+      chord:  { hits: [0, 8], prob: 0.50, vel: 0.14, dur: 1.2, level: 0.30 },
+      pad:    { on: true, vel: 0.12, level: 0.20, attack: 1.4, release: 2.0 },
+      perc:   {}
+    }
+  },
+  {
+    id: "cinematic", name: "Cinematic", blurb: "Wide open fifths for a film that does not exist",
+    bpm: 58, swing: 0, scale: "naturalMinor",
+    density: 0.40, space: 0.75,
+    progression: [0, 5, 3, 6, 0, 4, 5, 3], wander: 0.15, chordSteps: 32,
+    seventh: 0.15, ninth: 0, center: 58, timbre: "soft", wide: true,
+    accent: "#a8c6ff", accent2: "#4c6fff", reverb: 0.85, delay: 0.12, delayTime: 0.60, vinyl: false,
+    layers: {
+      arp:    { every: 4, pattern: "down", octaves: 2, prob: 0.35, vel: 0.16, dur: 2.0, level: 0.30 },
+      bass:   { hits: [0, 8], mode: "octave", vel: 0.32, dur: 4.0, level: 0.55 },
+      melody: { every: 8, prob: 0.30, vel: 0.22, dur: 3.0, level: 0.40 },
+      chord:  { hits: [0], prob: 1, vel: 0.16, dur: 6, level: 0.30 },
+      pad:    { on: true, vel: 0.24, level: 0.32, attack: 2.4, release: 3.5, stretch: 1.2 },
+      perc:   {}
+    }
+  },
+  {
+    id: "bossa", name: "Bossa", blurb: "Soft nylon syncopation and a shaker in the distance",
+    bpm: 104, swing: 0.10, scale: "major",
+    density: 0.60, space: 0.35,
+    progression: [0, 5, 1, 4, 3, 0, 5, 4], wander: 0.25, chordSteps: 16,
+    seventh: 0.90, ninth: 0.15, center: 64, timbre: "piano", wide: false,
+    accent: "#ffb3c7", accent2: "#e05a8a", reverb: 0.30, delay: 0.07, delayTime: 0.32, vinyl: false,
+    layers: {
+      arp:    { every: 4, pattern: "up", octaves: 1, prob: 0.15, vel: 0.18, dur: 0.6, level: 0.35 },
+      bass:   { hits: [0, 6, 10], mode: "rootFifth", vel: 0.38, dur: 1.0, level: 0.58 },
+      melody: { every: 4, prob: 0.28, vel: 0.26, dur: 1.0, level: 0.44 },
+      chord:  { hits: [0, 3, 6, 10, 12], prob: 0.85, vel: 0.26, dur: 0.6, level: 0.46 },
+      pad:    { on: false, vel: 0, level: 0, attack: 0.6, release: 1.2 },
+      perc:   { kick: [0, 8], brush: [4, 12], shaker: { every: 1, prob: 0.55, vel: 0.16 } }
+    }
+  },
+  {
+    id: "elegy", name: "Elegy", blurb: "One slow minor chord after another, breathing in and out",
+    bpm: 44, swing: 0, scale: "naturalMinor",
+    density: 0.30, space: 0.80,
+    // i–iv–v only. In natural minor all three are minor triads, and the rare
+    // seventh is a minor seventh, so the harmony never brightens.
+    progression: [0, 3, 4, 0, 3, 4, 0, 4], wander: 0, chordSteps: 32,
+    seventh: 0.18, ninth: 0, center: 60, timbre: "soft", wide: true,
+    accent: "#d9b3e8", accent2: "#8a5a9e", reverb: 0.88, delay: 0.08, delayTime: 0.68, vinyl: false,
+    layers: {
+      // Every layer except the pad is silent: this mood is only the chord bed.
+      arp:    { every: 4, pattern: "up", octaves: 1, prob: 0, vel: 0, dur: 1, level: 0 },
+      bass:   { hits: [], mode: "root", vel: 0, dur: 8, level: 0 },
+      melody: { every: 8, prob: 0, vel: 0, dur: 2, level: 0 },
+      chord:  { hits: [], prob: 0, vel: 0, dur: 1, level: 0 },
+      // A five-second swell and a long, soft fall. `stretch` lets the tail
+      // overlap the next chord so changes crossfade rather than stop dead.
+      pad:    { on: true, vel: 0.25, level: 0.36, attack: 4.8, release: 4.2, sustain: 0.64, stretch: 1.2 },
+      perc:   {}
+    }
+  },
+  {
+    id: "drone", name: "Drone", blurb: "One note, one room, no hurry",
+    bpm: 46, swing: 0, scale: "phrygian",
+    density: 0.26, space: 0.90,
+    // The tonic for four bars, then a flat-II (the Neapolitan colour phrygian
+    // exists for), then back. `wander` is near zero: this mood is a place, not
+    // a journey.
+    progression: [0, 0, 0, 1, 0, 0, 1, 0], wander: 0.05, chordSteps: 64,
+    seventh: 0.08, ninth: 0, center: 58, timbre: "soft", wide: true,
+    accent: "#d9d08a", accent2: "#7d7534", reverb: 0.94, delay: 0.10, delayTime: 0.78, vinyl: false,
+    layers: {
+      arp:    { every: 8, pattern: "random", octaves: 2, prob: 0.20, vel: 0.14, dur: 3.5, level: 0.30 },
+      // A pedal, not a bass line: one root per four bars, left to ring.
+      bass:   { hits: [0], mode: "root", vel: 0.26, dur: 8, level: 0.50 },
+      melody: { every: 8, prob: 0.18, vel: 0.18, dur: 4, level: 0.36 },
+      chord:  { hits: [], prob: 0, vel: 0, dur: 1, level: 0 },
+      // A swell longer than the chord window, so changes breathe into each
+      // other instead of arriving.
+      pad:    { on: true, vel: 0.26, level: 0.34, attack: 5.2, release: 5.0, sustain: 0.66, stretch: 1.25 },
+      perc:   {}
+    }
+  },
+  {
+    id: "musicbox", name: "Music Box", blurb: "A tiny comb, wound once and left to sing",
+    bpm: 72, swing: 0.02, scale: "major",
+    density: 0.45, space: 0.62,
+    progression: [0, 5, 3, 4, 0, 2, 3, 4], wander: 0.15, chordSteps: 32,
+    seventh: 0.10, ninth: 0.06, center: 74, timbre: "bell", wide: false,
+    accent: "#ffe6a6", accent2: "#c6963c", reverb: 0.72, delay: 0.30, delayTime: 0.42, vinyl: false,
+    layers: {
+      // Three octaves of up-down sparkle, clipped by `arpPool()` to a
+      // practical range, with a quiet pad underneath to keep the top end from
+      // sounding stranded.
+      arp:    { every: 2, pattern: "updown", octaves: 3, prob: 0.55, vel: 0.16, dur: 1.2, level: 0.36 },
+      bass:   { hits: [0, 8], mode: "root", vel: 0.28, dur: 2.5, level: 0.46 },
+      melody: { every: 4, prob: 0.34, vel: 0.24, dur: 1.6, level: 0.42 },
+      chord:  { hits: [], prob: 0, vel: 0, dur: 1, level: 0 },
+      pad:    { on: true, vel: 0.14, level: 0.20, attack: 2.0, release: 3.0 },
+      perc:   {}
+    }
+  },
+  {
+    id: "highway", name: "Highway", blurb: "Mixolydian miles with the top down",
+    bpm: 92, swing: 0.06, scale: "mixolydian",
+    density: 0.62, space: 0.32,
+    // I–bVII–IV: the flat seventh is why this mode is here, and the vamp is
+    // the point. No wandering far from it.
+    progression: [0, 6, 3, 0, 4, 3, 0, 6], wander: 0.12, chordSteps: 16,
+    seventh: 0.35, ninth: 0.05, center: 62, timbre: "piano", wide: false,
+    accent: "#ff9a7a", accent2: "#b23a2a", reverb: 0.30, delay: 0.06, delayTime: 0.28, vinyl: false,
+    layers: {
+      arp:    { every: 4, pattern: "down", octaves: 1, prob: 0.18, vel: 0.16, dur: 0.5, level: 0.30 },
+      // A push on the last sixteenth of the bar keeps the vamp leaning forward.
+      bass:   { hits: [0, 6, 8, 14], mode: "root", vel: 0.42, dur: 0.7, level: 0.60 },
+      melody: { every: 2, prob: 0.28, vel: 0.26, dur: 0.8, level: 0.44 },
+      chord:  { hits: [0, 6, 10], prob: 0.82, vel: 0.24, dur: 0.7, level: 0.46 },
+      pad:    { on: false, vel: 0, level: 0, attack: 0.6, release: 1.2 },
+      perc:   { kick: [0, 8], snare: [4, 12], hat: { every: 2, prob: 0.50, vel: 0.14 } }
+    }
+  },
+  {
+    id: "waltz", name: "Waltz", blurb: "Oom-pah-pah, one candlelit bar at a time",
+    bpm: 96, swing: 0.02, scale: "major",
+    // The only 3/4 mood: `barSteps` shortens the grid to three beats, so the
+    // bass lands on beat one and the chord stabs on beats two and three.
+    barSteps: 12,
+    density: 0.55, space: 0.42,
+    progression: [0, 3, 4, 0, 5, 3, 4, 0], wander: 0.10, chordSteps: 12,
+    seventh: 0.22, ninth: 0.05, center: 64, timbre: "piano", wide: false,
+    accent: "#ffd8b0", accent2: "#b9763f", reverb: 0.42, delay: 0.05, delayTime: 0.30, vinyl: false,
+    layers: {
+      arp:    { every: 4, pattern: "updown", octaves: 1, prob: 0.10, vel: 0.12, dur: 0.4, level: 0.25 },
+      // One root per bar alternates root/fifth through `mode: "rootFifth"`:
+      // the "oom". The chord layer supplies the two "pah"s.
+      bass:   { hits: [0], mode: "rootFifth", vel: 0.46, dur: 0.9, level: 0.60 },
+      melody: { every: 4, prob: 0.25, vel: 0.22, dur: 0.9, level: 0.42 },
+      chord:  { hits: [4, 8], prob: 0.95, vel: 0.22, dur: 0.5, level: 0.42 },
+      pad:    { on: false, vel: 0, level: 0, attack: 0.6, release: 1.2 },
+      perc:   {}
+    }
+  },
+  {
+    id: "tango", name: "Tango", blurb: "Marcato bass, a held breath, then the next chord",
+    bpm: 116, swing: 0.04, scale: "harmonicMinor",
+    density: 0.58, space: 0.28,
+    // Harmonic minor makes the V major, which is the whole dramatic engine.
+    progression: [0, 3, 4, 0, 5, 3, 4, 0], wander: 0.10, chordSteps: 16,
+    seventh: 0.25, ninth: 0, center: 62, timbre: "piano", wide: false,
+    accent: "#ff6b8a", accent2: "#a8123a", reverb: 0.28, delay: 0.05, delayTime: 0.22, vinyl: false,
+    layers: {
+      arp:    { every: 4, pattern: "up", octaves: 1, prob: 0, vel: 0, dur: 1, level: 0 },
+      // Short, accented hits on and around the beat: the marcato walk.
+      bass:   { hits: [0, 4, 6, 8, 12, 14], mode: "rootFifth", vel: 0.46, dur: 0.4, level: 0.62 },
+      melody: { every: 2, prob: 0.30, vel: 0.28, dur: 0.5, level: 0.46 },
+      // Stabs, not pads: a quarter-beat of chord then air.
+      chord:  { hits: [0, 3, 6, 10, 12], prob: 0.78, vel: 0.22, dur: 0.25, level: 0.42 },
+      pad:    { on: false, vel: 0, level: 0, attack: 0.6, release: 1.2 },
+      perc:   {}
+    }
+  },
+  {
+    id: "arcade", name: "Arcade", blurb: "Sixteen steps of chiptune sunshine",
+    bpm: 132, swing: 0, scale: "major",
+    density: 0.68, space: 0.18,
+    progression: [0, 5, 3, 4, 0, 4, 5, 3], wander: 0.15, chordSteps: 16,
+    seventh: 0.05, ninth: 0, center: 72, timbre: "synth", wide: false,
+    accent: "#63f0ff", accent2: "#1e7dd6", reverb: 0.12, delay: 0.18, delayTime: 0.20, vinyl: false,
+    layers: {
+      // A continuous sixteenth arpeggio is the sound of the genre; the amp
+      // envelope, not the note length, does the chipping.
+      arp:    { every: 1, pattern: "up", octaves: 2, prob: 0.98, vel: 0.18, dur: 0.14, level: 0.38 },
+      bass:   { hits: [0, 4, 8, 12], mode: "root", vel: 0.40, dur: 0.22, level: 0.55 },
+      melody: { every: 2, prob: 0.32, vel: 0.22, dur: 0.3, level: 0.40 },
+      chord:  { hits: [0, 8], prob: 0.30, vel: 0.12, dur: 0.2, level: 0.25 },
+      pad:    { on: false, vel: 0, level: 0, attack: 0.2, release: 0.4 },
+      perc:   { kick: [0, 8], snare: [4, 12], hat: { every: 1, prob: 0.65, vel: 0.12 } }
+    }
+  }
+];
+
+const STYLE_MAP = Object.fromEntries(STYLES.map((s) => [s.id, s]));
+
+/**
+ * Presentation order for the mood row and the arrow-key cycle: slow to fast.
+ * `STYLES` groups related entries together for readability, so anything that
+ * walks moods for the visitor uses this list instead.
+ */
+const STYLE_ORDER = STYLES.slice().sort((a, b) => a.bpm - b.bpm);
+
+/**
+ * Choose an inversion of a chord that sounds good in context.
+ *
+ * Every rotation of the sorted tones (moving the lowest note up an octave)
+ * is scored against three pressures: stay near the style's comfortable
+ * register, keep every note inside a sane piano range, and move as little
+ * as possible from the previous voicing. The result is smooth voice
+ * leading rather than block chords jumping around the keyboard.
+ *
+ * @param {number[]} notes chord tones as MIDI numbers
+ * @param {number[]|null} prev previous voicing, if any
+ * @param {object} st style configuration (uses `center`)
+ * @returns {number[]} the chosen voicing, low to high
+ */
+function chooseVoicing(notes, prev, st) {
+  const base = [...new Set(notes)].sort((a, b) => a - b);
+  const center = st.center || 64;
+  let best = base;
+  let bestScore = Infinity;
+
+  for (let inv = 0; inv <= base.length; inv++) {
+    const cand = base.map((n, i) => (i < inv ? n + 12 : n)).sort((a, b) => a - b);
+    let score = 0;
+    for (const n of cand) {
+      score += Math.abs(n - center) * 0.34;
+      if (n < 50) score += (50 - n) * 2.2;
+      if (n > 88) score += (n - 88) * 3.0;
+    }
+    if (prev && prev.length) {
+      for (const n of cand) {
+        let nearest = 99;
+        for (const p of prev) nearest = Math.min(nearest, Math.abs(p - n));
+        score += nearest * 0.62;
+      }
+    }
+    if (score < bestScore) {
+      bestScore = score;
+      best = cand;
+    }
+  }
+  return best;
+}
+
+/**
+ * Derive a human-readable chord symbol and Roman numeral from the actual
+ * pitches. Nothing is assumed from the scale degree: the intervals present
+ * in the voicing decide whether the chord is major, minor, diminished,
+ * augmented, suspended, or a power chord, and whether it carries a seventh
+ * or an added ninth. That keeps the display truthful even after random
+ * extensions and modal borrowing.
+ *
+ * @param {number} rootPc root pitch class, 0..11
+ * @param {number[]} notes voiced MIDI notes
+ * @param {number} degree scale degree 0..6
+ * @returns {{label: string, roman: string}}
+ */
+function chordInfo(rootPc, notes, degree) {
+  const rel = new Set(notes.map((n) => (((n - rootPc) % 12) + 12) % 12));
+  const has = (x) => rel.has(x);
+  const minorThird = has(3);
+  const majorThird = has(4);
+  const flatFifth = has(6);
+  const sharpFifth = has(8);
+  const seventh = has(11) ? 11 : has(10) ? 10 : null;
+  const ninth = has(2);
+
+  let quality = "maj";
+  let base = "";
+  if (minorThird && flatFifth && seventh === 10) {
+    quality = "m7b5"; base = "m7b5";
+  } else if (minorThird && flatFifth) {
+    quality = "dim"; base = "dim";
+  } else if (minorThird && sharpFifth) {
+    quality = "aug"; base = "aug";
+  } else if (minorThird) {
+    quality = "m"; base = "m";
+  } else if (majorThird) {
+    quality = "maj"; base = "";
+  } else if (has(5)) {
+    quality = "sus4"; base = "sus4";
+  } else if (has(2)) {
+    quality = "sus2"; base = "sus2";
+  } else {
+    quality = "5"; base = "5";
+  }
+
+  let ext = "";
+  if (quality !== "m7b5" && quality !== "dim") {
+    if (seventh === 11) ext = quality === "m" ? "(maj7)" : "maj7";
+    else if (seventh === 10) ext = "7";
+  }
+  if (ninth && (quality === "maj" || quality === "m")) ext += seventh ? "9" : "add9";
+
+  const label = NOTE_NAMES[rootPc] + base + ext;
+  const numerals = ["I", "II", "III", "IV", "V", "VI", "VII"];
+  let roman = numerals[degree] || "I";
+  if (quality === "m" || quality === "dim" || quality === "m7b5") roman = roman.toLowerCase();
+  if (quality === "dim") roman += "°";
+  if (quality === "aug") roman += "+";
+  if (seventh === 10) roman += "7";
+  else if (seventh === 11) roman += "maj7";
+  if (ninth) roman += "9";
+
+  return { label, roman };
+}
+
+/**
+ * Build the next chord from a scale degree.
+ *
+ * The core is a diatonic stack of thirds (degree, degree+2, degree+4);
+ * seventh and ninth extensions are added probabilistically according to
+ * the style. The raw stack is then passed through `chooseVoicing`, and
+ * "wide" styles get an octave below and above for a cinematic spread.
+ *
+ * The chord's root pitch class is computed separately from the voicing,
+ * so inversions never confuse the label.
+ *
+ * @param {number} degree 0..6 within the current scale
+ * @returns {{degree:number,rootPc:number,notes:number[],label:string,roman:string}}
+ */
+function buildChord(degree) {
+  const st = S.style || STYLE_MAP.nocturne;
+  const scale = SCALES[st.scale];
+  const tones = [0, 2, 4];
+  if (chance(st.seventh || 0)) tones.push(6);
+  // A diatonic ninth over a diminished triad is a flat ninth; skip it so the
+  // displayed chord symbol and the sounding notes stay in agreement.
+  const thirdSpan = ((scale[(degree + 2) % 7] - scale[degree]) + 12) % 12;
+  const fifthSpan = ((scale[(degree + 4) % 7] - scale[degree]) + 12) % 12;
+  const canAddNinth = !(thirdSpan === 3 && fifthSpan === 6);
+  if (canAddNinth && chance(st.ninth || 0)) tones.push(8);
+
+  const base = S.root + 12;
+  let notes = tones.map((d) => {
+    const i = degree + d;
+    const oct = Math.floor(i / 7);
+    return base + scale[((i % 7) + 7) % 7] + 12 * oct;
+  });
+  notes = [...new Set(notes)];
+
+  let voiced = chooseVoicing(notes, S.prevVoicing, st);
+  if (st.wide) {
+    voiced = [voiced[0] - 12, ...voiced, voiced[voiced.length - 1] + 12]
+      .filter((n) => n >= 38 && n <= 90);
+    voiced = [...new Set(voiced)].sort((a, b) => a - b);
+  }
+  S.prevVoicing = voiced;
+
+  const rootPc = ((S.root + scale[degree]) % 12 + 12) % 12;
+  const info = chordInfo(rootPc, voiced, degree);
+  return { degree, rootPc, notes: voiced, label: info.label, roman: info.roman };
+}
+
+/**
+ * Expand the current chord into a sorted pool for arpeggiation, repeating
+ * it across the style's requested number of octaves and clipping to a
+ * practical piano range.
+ *
+ * @returns {number[]} MIDI notes, low to high
+ */
+function arpPool() {
+  const st = S.style || STYLE_MAP.nocturne;
+  const a = st.layers.arp || {};
+  const notes = S.chord ? S.chord.notes.slice().sort((x, y) => x - y) : [];
+  const octaves = a.octaves || 2;
+  let pool = [];
+  for (let o = 0; o < octaves; o++) {
+    for (const n of notes) pool.push(n + 12 * o);
+  }
+  pool = [...new Set(pool)].filter((n) => n >= 48 && n <= 92).sort((x, y) => x - y);
+  return pool.length ? pool : [60, 64, 67];
+}
+
+/**
+ * Pick the next arpeggio note. The running index makes up/down/up-down
+ * patterns deterministic within a chord while still changing from chord
+ * to chord; "random" is the exception and is intentionally unordered.
+ *
+ * @param {number[]} pool output of `arpPool()`
+ * @returns {number} MIDI note
+ */
+function nextArp(pool) {
+  const a = (S.style && S.style.layers.arp) || {};
+  const len = pool.length;
+  const i = S.arpIndex++;
+  if (a.pattern === "down") return pool[len - 1 - (i % len)];
+  if (a.pattern === "updown") {
+    const period = Math.max(1, len * 2 - 2);
+    const k = i % period;
+    return pool[k < len ? k : period - k];
+  }
+  if (a.pattern === "random") return pick(pool);
+  return pool[i % len];
+}
+
+/**
+ * Choose the next bass note. Modes are simple on purpose: root, root-fifth
+ * alternation, octave alternation, or a four-step walking figure. Keeping
+ * the bass at octave 2 leaves the chord voicings room to breathe.
+ *
+ * @returns {number} MIDI note
+ */
+function bassNote() {
+  const st = S.style || STYLE_MAP.nocturne;
+  const b = st.layers.bass || {};
+  const root = 36 + (S.chord ? S.chord.rootPc : 0);
+  const i = S.bassIndex++;
+  if (b.mode === "walk") {
+    const walk = [root, root + 7, root + 12, root + 10];
+    return clamp(walk[i % walk.length], 33, 55);
+  }
+  if (b.mode === "rootFifth") return i % 2 ? root + 7 : root;
+  if (b.mode === "octave") return i % 2 ? root + 12 : root;
+  return root;
+}
+
+/**
+ * Generate a single melody note by a short random walk through the scale.
+ *
+ * Preferences, in order: stay within a fifth of the previous note, land on
+ * a chord tone, and occasionally leap. The walk is clamped to a high
+ * register so it never collides with the chord bed.
+ *
+ * @returns {number} MIDI note
+ */
+function melodyNote() {
+  const st = S.style || STYLE_MAP.nocturne;
+  const scale = SCALES[st.scale];
+  const base = S.root + 24;
+  const chordPcs = new Set((S.chord ? S.chord.notes : []).map(pcOf));
+  const candidates = [];
+
+  for (let oct = 0; oct < 2; oct++) {
+    for (let d = 0; d < 7; d++) {
+      const n = base + oct * 12 + scale[d];
+      if (n >= 58 && n <= 90) candidates.push(n);
+    }
+  }
+  if (!candidates.length) return base + 12;
+
+  let note;
+  if (S.melodyPrev == null) {
+    const tones = candidates.filter((n) => chordPcs.has(pcOf(n)));
+    note = tones.length ? pick(tones) : pick(candidates);
+  } else if (chance(0.22)) {
+    note = pick(candidates); // occasional leap
+  } else {
+    const near = candidates.filter((n) => Math.abs(n - S.melodyPrev) <= 7 && n !== S.melodyPrev);
+    note = near.length ? pick(near) : pick(candidates);
+    if (chance(0.45)) {
+      const snapped = near.filter((n) => chordPcs.has(pcOf(n)) && Math.abs(n - S.melodyPrev) <= 5);
+      if (snapped.length) note = pick(snapped);
+    }
+  }
+  S.melodyPrev = note;
+  return note;
+}
+
+/* ------------------------------------------------------------------ *
+ * Scheduler: look-ahead clock, one 16th note at a time
+ * ------------------------------------------------------------------ */
+
+/**
+ * Move the progression forward and schedule the pad for the new harmony.
+ *
+ * Most of the time the next degree comes from the style's progression, but
+ * `wander` occasionally substitutes any diatonic degree. Immediate repeats
+ * are discouraged so the harmony keeps moving. The pad is scheduled here
+ * (not in the step loop) because it sustains for the whole chord window.
+ *
+ * @param {number} time AudioContext time of the chord change
+ */
+function advanceChord(time) {
+  const st = S.style;
+  const seq = st.progression;
+  const idx = S.chordIndex % seq.length;
+  let degree = seq[idx];
+
+  if (S.chordIndex > 0 && chance(st.wander || 0)) {
+    degree = pick([0, 1, 2, 3, 4, 5, 6]);
+  }
+  // avoid a static loop of the same chord
+  if (S.chord && degree === S.chord.degree && chance(0.65)) {
+    degree = seq[(idx + 1) % seq.length];
+  }
+
+  S.chordIndex++;
+  S.chord = buildChord(degree);
+  S.forceChord = false;
+
+  const p = st.layers.pad;
+  if (p && p.on) {
+    const durBeats = (st.chordSteps / 4) * (p.stretch || 1);
+    for (const n of S.chord.notes) {
+      playVoice(n, time + 0.012, durBeats, p.vel * rand(0.85, 1.12), {
+        timbre: "soft",
+        level: p.level,
+        attack: p.attack,
+        release: p.release,
+        sustain: 0.72,
+        detune: 5.5,
+        pan: rand(-0.28, 0.28)
+      });
+    }
+  }
+
+  visual.push({ t: time, kind: "chord", chord: S.chord });
+}
+
+/**
+ * Schedule everything that happens on one 16th-note grid position.
+ *
+ * Layers are independent so a style is just data: comping hits, arpeggio
+ * rate/pattern, bass hits, melodic density, pad, and percussion patterns.
+ * The Density slider multiplies the probabilistic layers but never the
+ * bass or the explicit drum hits, which anchor the groove.
+ *
+ * Swing is applied per position: the second eighth of each beat is pushed
+ * later, while odd 16ths get a smaller nudge. This keeps shuffled styles
+ * from sounding mechanically quantised.
+ *
+ * `barSteps` is the mood's bar length in 16ths (16 unless a mood opts into a
+ * shorter metre, as the waltz does). It only bounds the pattern grids; the
+ * look-ahead clock keeps counting absolute 16ths, so swing, arp and melody
+ * rates are untouched by it.
+ *
+ * @param {number} step absolute 16th-note counter (used for bar math)
+ * @param {number} time AudioContext start time for this grid position
+ */
+function scheduleStep(step, time) {
+  const st = S.style;
+  if (!st) return;
+
+  const pos = step % (st.barSteps || 16);
+  if (S.forceChord || !S.chord || step % st.chordSteps === 0) {
+    advanceChord(time);
+  }
+
+  const spb = 60 / Math.max(30, S.bpm);
+  const sd = spb / 4;
+  const sw = st.swing || 0;
+  let swingOffset = 0;
+  if (pos % 4 === 2) swingOffset = sw * sd * 0.67;
+  else if (pos % 2 === 1) swingOffset = sw * sd * 0.25;
+  const t = time + swingOffset;
+
+  const d = 0.55 + S.density * 0.95;
+  const L = st.layers;
+
+  const c = L.chord;
+  if (c && c.hits && c.hits.includes(pos) && chance((c.prob == null ? 1 : c.prob) * Math.min(1, d))) {
+    for (const n of S.chord.notes) {
+      playVoice(n, t, c.dur, c.vel * rand(0.88, 1.08), {
+        level: c.level,
+        pan: rand(-0.3, 0.3)
+      });
+    }
+  }
+
+  const a = L.arp;
+  if (a && pos % (a.every || 2) === 0 && chance(clamp((a.prob == null ? 0.8 : a.prob) * d, 0, 1))) {
+    const n = nextArp(arpPool());
+    if (n != null) {
+      playVoice(n, t, a.dur, a.vel * rand(0.8, 1.12), {
+        level: a.level,
+        timbre: st.timbre,
+        pan: rand(-0.4, 0.4),
+        detune: 2
+      });
+    }
+  }
+
+  const b = L.bass;
+  if (b && b.hits.includes(pos)) {
+    playVoice(bassNote(), t, b.dur, b.vel * rand(0.9, 1.05), {
+      level: b.level,
+      timbre: "soft",
+      detune: 1.5,
+      sustain: 0.5
+    });
+  }
+
+  const m = L.melody;
+  if (m && pos % (m.every || 4) === 0 && chance(clamp((m.prob == null ? 0.3 : m.prob) * d, 0, 1))) {
+    playVoice(melodyNote(), t, m.dur, m.vel * rand(0.82, 1.1), {
+      level: m.level,
+      pan: rand(-0.3, 0.3)
+    });
+  }
+
+  const p = L.perc;
+  if (p) {
+    if (p.kick && p.kick.includes(pos)) kick(t, rand(0.55, 0.75));
+    if (p.snare && p.snare.includes(pos)) snare(t, rand(0.35, 0.55));
+    if (p.brush && p.brush.includes(pos)) brush(t, rand(0.3, 0.5));
+    if (p.shaker && pos % p.shaker.every === 0 && chance(clamp(p.shaker.prob * d, 0, 1))) {
+      shaker(t, p.shaker.vel * rand(0.7, 1.1));
+    }
+    if (p.hat && pos % p.hat.every === 0 && chance(clamp(p.hat.prob * d, 0, 1))) {
+      hat(t, p.hat.vel * rand(0.6, 1.2));
+    }
+  }
+}
+
+/**
+ * Look-ahead scheduler. A timer wakes up often enough to keep 450 ms of
+ * music queued (2 s in a visible-but-unfocused window, 12 s when the tab is
+ * hidden and timers are throttled); notes are scheduled against the audio
+ * clock, never played from the timer itself. That keeps timing stable under
+ * UI jank, a dimmed phone screen, or a browser that slows timers for a page it
+ * considers inactive.
+ *
+ * If the tab was backgrounded, `nextTime` can be far in the past. Rather
+ * than firing a burst of catch-up notes, the clock resynchronises just
+ * ahead of the current audio time.
+ */
+function tick() {
+  perfTick();
+  if (!S.playing || !A.ctx) return;
+  // During a style cross-fade the master is dipped; scheduling through the dip
+  // would burn notes nobody hears, so the clock waits for the hand-over.
+  if (S.transitioning) return;
+  const now = A.ctx.currentTime;
+  if (S.nextTime < now - 0.25) S.nextTime = now + 0.03; // tab was asleep
+  // A hidden tab can have its timers throttled to roughly one tick every
+  // 5-10 seconds, so it needs a 12 s buffer to avoid gaps. A visible but
+  // merely unfocused window is not throttled that hard, and 12 s there means
+  // hundreds of live oscillators (DevTools focus counts as unfocused, so
+  // profiling made this worse). 2 s is still a wide safety margin for the
+  // visible case; the active tab keeps the tight 450 ms horizon.
+  //
+  // `document.hasFocus()` is checked directly because some mobile browsers do
+  // not deliver a window blur event on an app switch, leaving `tabFocused`
+  // stale while timers are already being throttled.
+  const unfocused = typeof document.hasFocus === "function"
+    ? !document.hasFocus()
+    : !tabFocused;
+  const horizon = document.hidden ? 12.0 : unfocused ? 2.0 : 0.45;
+  PERF.horizon = horizon;
+  const stepDur = 60 / Math.max(30, S.bpm) / 4;
+  // The guard must cover the whole horizon, not a fixed 64 steps, or a fast
+  // style would truncate the buffer before it is full.
+  const maxSteps = Math.min(1000, Math.ceil(horizon / stepDur) + 4);
+  let guard = 0;
+  while (S.nextTime < now + horizon && guard++ < maxSteps) {
+    // A late timer can leave several grid steps in the past. Skipping them
+    // is better than letting playVoice clamp them all to "now", which turns
+    // a stall into an audible flam. The 20 ms tolerance keeps genuine jitter.
+    if (S.nextTime >= now - 0.02) scheduleStep(S.step, S.nextTime);
+    S.nextTime += stepDur;
+    S.step++;
+  }
+}
+/* ------------------------------------------------------------------ *
+ * Canvas: slow aurora, note particles, chord ripples, waveform
+ * ------------------------------------------------------------------ */
+
+const canvas = els.canvas;
+const g2d = canvas.getContext("2d");
+let W = 0;
+let H = 0;
+let DPR = 1;
+let stars = [];
+let particles = [];
+let rings = [];
+let lastFrame = 0;
+let rafId = 0;
+let visualTimer = null;
+let deckTop = 0;
+let bgCanvas = null;
+let bgCtx = null;
+let bgW = 1;
+let bgH = 1;
+let lastBg = -1;
+
+/**
+ * Pre-render a soft radial glow once per palette. Drawing a cached sprite
+ * is dramatically cheaper than building a gradient for every particle on
+ * every frame, which matters on phones.
+ *
+ * @param {string} rgb "r,g,b"
+ * @returns {HTMLCanvasElement}
+ */
+function makeSprite(rgb) {
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const g = c.getContext("2d");
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  // Additive glow wants a white-hot core; multiply blending does not, because
+  // white is the identity and would punch a hole in the colour. The light
+  // sprite is therefore all accent, with no white centre.
+  grad.addColorStop(0, light ? `rgba(${rgb},.95)` : "rgba(255,255,255,.95)");
+  grad.addColorStop(0.28, `rgba(${rgb},${light ? 0.78 : 0.82})`);
+  grad.addColorStop(1, `rgba(${rgb},0)`);
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  return c;
+}
+
+/**
+ * Build the two glow sprites used by note particles. Rebuilt only when the
+ * style palette changes.
+ * @returns {{a: HTMLCanvasElement, b: HTMLCanvasElement}}
+ */
+function makeSprites() {
+  return { a: makeSprite(S.palette.a), b: makeSprite(S.palette.b) };
+}
+
+/**
+ * Size the canvas to the viewport at device pixel ratio (capped at 2 so
+ * high-DPI phones do not melt), reset the transform, and reseed the star
+ * field. Called on load and after a debounced resize.
+ */
+function resizeCanvas() {
+  // Default caps: 2x on desktop, 1.5x on phones. `?dpr=N` overrides the cap for
+  // a fill-rate comparison without touching anything else.
+  const cap = isFinite(DIAG.dpr) && DIAG.dpr > 0
+    ? DIAG.dpr
+    : (window.innerWidth < 760 ? 1.5 : 2);
+  DPR = Math.min(cap, window.devicePixelRatio || 1);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.max(1, Math.floor(W * DPR));
+  canvas.height = Math.max(1, Math.floor(H * DPR));
+  canvas.style.width = W + "px";
+  canvas.style.height = H + "px";
+  g2d.setTransform(DPR, 0, 0, DPR, 0, 0);
+  // Cache the deck's top edge: reading layout for every note particle would
+  // cause avoidable main-thread work while audio is playing.
+  deckTop = els.deck ? els.deck.getBoundingClientRect().top : H * 0.7;
+  // The aurora changes very slowly, so render it into a quarter-resolution
+  // buffer at ~10 fps and upscale it. Filling the full-screen gradients three
+  // times per frame was the largest avoidable cost on phones.
+  bgW = Math.max(1, Math.floor(W / 4));
+  bgH = Math.max(1, Math.floor(H / 4));
+  bgCanvas = document.createElement("canvas");
+  bgCanvas.width = bgW;
+  bgCanvas.height = bgH;
+  bgCtx = bgCanvas.getContext("2d");
+  lastBg = -1;
+  stars = Array.from({ length: window.innerWidth < 760 ? 55 : 90 }, () => ({
+    x: Math.random(),
+    y: Math.random(),
+    r: rand(0.35, 1.4),
+    ph: rand(0, Math.PI * 2),
+    sp: rand(0.25, 0.9)
+  }));
+  S.sprites = makeSprites();
+}
+
+/**
+ * Horizontal position for a note the keybed does not show.
+ *
+ * Bass below and melody above the displayed octaves used to be placed by a
+ * pitch-proportional formula tuned to the canvas width, which drifted right of
+ * the actual keys. Snapping to the nearest displayed key keeps every mote
+ * over the keybed, which is what the eye expects.
+ *
+ * @param {number} midi
+ * @returns {number} viewport x in pixels
+ */
+function nearestKeyX(midi) {
+  if (!keyBed) return W / 2;
+  if (midi <= keyBed.lo) return keyBed.left;
+  if (midi >= keyBed.hi) return keyBed.right;
+  // Inside the range every note has a key; this is only a safety net.
+  const norm = clamp((midi - 36) / 54, 0, 1);
+  return clamp(W * (0.13 + norm * 0.74), keyBed.left, keyBed.right);
+}
+
+/**
+ * Emit a rising light mote for a note. Pitch maps to horizontal position,
+ * so bass notes appear on the left and high notes on the right; velocity
+ * controls size. The particle list is capped to keep the frame budget flat.
+ *
+ * @param {number} midi
+ * @param {number} vel 0..1
+ */
+function spawnParticle(midi, vel) {
+  if (!S.visuals) return;
+  if (!S.sprites) S.sprites = makeSprites();
+  // Spawn just above the control deck so the motes are not hidden behind it.
+  const spawnY = Math.max(H * 0.34, Math.min(H * 0.72, (deckTop || H * 0.7) - 16));
+  // Prefer the real key centre so the mote rises from the key that sounded.
+  // Notes outside the displayed octaves snap to the nearest displayed key
+  // rather than a pitch-proportional guess, which used to land them to the
+  // right of the keybed.
+  const keyX = keyCenters.get(midi);
+  let x = keyX != null ? keyX : nearestKeyX(midi);
+  x += rand(-6, 6);
+  if (keyBed) x = clamp(x, keyBed.left, keyBed.right);
+  particles.push({
+    x,
+    y: spawnY,
+    vx: rand(-14, 14),
+    vy: rand(-72, -30),
+    life: rand(1.7, 3.4),
+    age: 0,
+    size: rand(14, 26) + vel * 20,
+    sprite: chance(0.5) ? S.sprites.a : S.sprites.b
+  });
+  if (particles.length > (W < 760 ? 110 : 190)) particles.shift();
+}
+
+/**
+ * Emit an expanding ring on each chord change, a quiet visual cadence that
+ * matches the harmonic rhythm.
+ */
+function spawnRing() {
+  if (!S.visuals) return;
+  rings.push({ r: 0, age: 0, life: 1.7 });
+  if (rings.length > 6) rings.shift();
+}
+
+/**
+ * Drain visual events whose audio start time has arrived.
+ *
+ * Audio is scheduled ahead of time, so firing visuals at schedule time
+ * would make the lights run early. Each event carries its exact
+ * AudioContext timestamp and waits here until that moment.
+ */
+function processVisual() {
+  if (!A.ctx) return;
+  const now = A.ctx.currentTime;
+  while (visual.length && visual[0].t <= now) {
+    const ev = visual.shift();
+    // After a long background pause, drop stale note flashes instead of
+    // firing a whole burst of particles at once.
+    if (ev.kind === "note" && ev.t < now - 0.6) continue;
+    if (ev.kind === "chord") {
+      updateChordUI(ev.chord);
+      // Returning from a throttled background drains a queue full of stale
+      // chords; only the fresh one gets a ripple.
+      if (ev.t >= now - 0.6) spawnRing();
+    } else if (ev.kind === "note") {
+      spawnParticle(ev.midi, ev.vel);
+      flashKey(ev.midi);
+    }
+  }
+  if (visual.length > 240) visual.splice(0, visual.length - 240);
+}
+
+/**
+ * Draw the master bus waveform as a faint ribbon behind the chord name.
+ * The analyser is time-domain only; no FFT work is needed for this effect.
+ *
+ * The ribbon is part of the stage in every state: silence is a flat line
+ * rather than a missing one. It reads the analyser whenever the audio graph
+ * exists and the volume is above zero — including while paused, so a note
+ * played by hand still moves it. Before the first gesture there is no
+ * analyser, and at volume zero nothing is audible; both cases draw the
+ * baseline.
+ */
+function drawWave() {
+  const y0 = H * 0.56;
+  const amp = Math.min(72, H * 0.075);
+  const live = S.volume > 0 && A.analyser && A.waveData;
+
+  g2d.beginPath();
+  if (live) {
+    A.analyser.getFloatTimeDomainData(A.waveData);
+    const data = A.waveData;
+    const step = Math.max(1, Math.floor(data.length / 180));
+    for (let i = 0; i < data.length; i += step) {
+      const x = (i / (data.length - 1)) * W;
+      const y = y0 + data[i] * amp;
+      if (i === 0) g2d.moveTo(x, y);
+      else g2d.lineTo(x, y);
+    }
+  } else {
+    g2d.moveTo(0, y0);
+    g2d.lineTo(W, y0);
+  }
+  g2d.strokeStyle = `rgba(${S.palette.a},${light ? 0.20 : 0.11})`;
+  g2d.lineWidth = 1.2;
+  g2d.stroke();
+}
+
+/**
+ * Paint the slow aurora into the small offscreen buffer. Called at ~10 fps
+ * because the fields drift too slowly for anything faster to be visible.
+ *
+ * @param {number} t seconds since page start
+ */
+function renderBackground(t) {
+  bgCtx.clearRect(0, 0, bgW, bgH);
+  // Same reasoning as the main loop: multiply for the pale stage, and the
+  // alphas are raised because 10% multiply is far fainter than 10% additive.
+  bgCtx.globalCompositeOperation = light ? "multiply" : "lighter";
+  for (let i = 0; i < 3; i++) {
+    const speed = 0.05 + i * 0.017;
+    const ph = i * 2.1;
+    const cx = bgW * (0.5 + 0.4 * Math.sin(t * speed + ph));
+    const cy = bgH * (0.42 + 0.26 * Math.cos(t * speed * 0.83 + ph));
+    const R = Math.max(bgW, bgH) * (0.3 + 0.08 * Math.sin(t * 0.11 + i));
+    const rgb = i === 1 ? S.palette.b : S.palette.a;
+    const grad = bgCtx.createRadialGradient(cx, cy, 0, cx, cy, R);
+    grad.addColorStop(0, `rgba(${rgb},${light ? 0.17 : 0.10})`);
+    grad.addColorStop(0.55, `rgba(${rgb},${light ? 0.075 : 0.035})`);
+    grad.addColorStop(1, `rgba(${rgb},0)`);
+    bgCtx.fillStyle = grad;
+    bgCtx.fillRect(0, 0, bgW, bgH);
+  }
+}
+
+/**
+ * Main animation loop: aurora fields, stars, waveform, chord ripples, and
+ * note particles. Everything is additive ("lighter") so overlapping glows
+ * bloom instead of muddying. `dt` is clamped to avoid huge jumps after a
+ * background tab returns.
+ *
+ * The loop is only scheduled while `S.visuals` is true. In minimal mode the
+ * audio and chord display keep running via `processVisual`, but no canvas
+ * pixels are touched and the browser can stop compositing the scene.
+ *
+ * @param {number} ts high-resolution timestamp from requestAnimationFrame
+ */
+function draw(ts) {
+  rafId = 0;
+  const t = ts / 1000;
+  const elapsed = Math.max(0, (ts - lastFrame) / 1000) || 0.016;
+  // Movement uses a clamped step so a stalled frame cannot teleport anything.
+  const dt = Math.min(0.05, elapsed);
+  // Lifetimes use the real elapsed time instead. An unfocused window can have
+  // rAF throttled to ~1 fps, and ageing by `dt` there made a 3 s mote live 60
+  // real seconds while fresh ones kept arriving: the pool saturated with frozen
+  // particles that never seemed to die. Real time also expires everything that
+  // came due while the tab was away in a single frame, which is what you want
+  // on return: no ghosts replaying the last minutes of notes.
+  const ageDt = elapsed;
+  lastFrame = ts;
+
+  processVisual();
+  if (!S.visuals) return;
+  g2d.clearRect(0, 0, W, H);
+
+  // ?noaurora and ?nofx are diagnostics: each skips one layer so a slow frame
+  // can be attributed to it. Both are inert when the flag is absent.
+  if (!DIAG.noaurora) {
+    // Refresh the cached aurora at ~10 fps; it moves too slowly to need more.
+    if (bgCtx && (lastBg < 0 || t - lastBg > 0.1)) {
+      renderBackground(t);
+      lastBg = t;
+    }
+    if (bgCanvas) g2d.drawImage(bgCanvas, 0, 0, W, H);
+  }
+  // Additive on black blooms; on white it can only go lighter, which is
+  // invisible. Multiply darkens instead, so the same overlay reads as colour.
+  g2d.globalCompositeOperation = light ? "multiply" : "lighter";
+
+  if (!DIAG.nofx) {
+    for (const s of stars) {
+      const tw = 0.5 + 0.5 * Math.sin(t * s.sp + s.ph);
+      g2d.globalAlpha = (light ? 0.10 : 0.05) + tw * (light ? 0.26 : 0.2);
+      g2d.fillStyle = `rgba(${S.palette.a},1)`;
+      g2d.beginPath();
+      g2d.arc(s.x * W, s.y * H, s.r, 0, Math.PI * 2);
+      g2d.fill();
+    }
+    g2d.globalAlpha = 1;
+
+    drawWave();
+
+    for (let i = rings.length - 1; i >= 0; i--) {
+      const r = rings[i];
+      r.age += ageDt;
+      r.r += Math.max(W, H) * 0.33 * dt;
+      const k = r.age / r.life;
+      if (k >= 1) {
+        rings.splice(i, 1);
+        continue;
+      }
+      g2d.beginPath();
+      g2d.arc(W * 0.5, H * 0.46, r.r, 0, Math.PI * 2);
+      g2d.strokeStyle = `rgba(${S.palette.a},${(1 - k) * (light ? 0.46 : 0.34)})`;
+      g2d.lineWidth = 1.1;
+      g2d.stroke();
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.age += ageDt;
+      if (p.age >= p.life) {
+        particles.splice(i, 1);
+        continue;
+      }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 6 * dt;
+      p.vx *= 0.995;
+      const k = p.age / p.life;
+      g2d.globalAlpha = Math.sin(Math.PI * k) * (light ? 0.62 : 0.8);
+      g2d.drawImage(p.sprite, p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    }
+  }
+  g2d.globalAlpha = 1;
+  g2d.globalCompositeOperation = "source-over";
+
+  rafId = requestAnimationFrame(draw);
+}
+
+/* ------------------------------------------------------------------ *
+ * Keyboard: DOM keys, highlighted for harmony and note hits
+ * ------------------------------------------------------------------ */
+
+/**
+ * Glissando state: the pointer currently travelling across the keybed and the
+ * last note it sounded.
+ *
+ * A drag is tracked on `window` rather than on the keys, because the pointer
+ * leaves the original key almost immediately. `midi` doubles as the retrigger
+ * guard: `pointermove` fires many times per key, and only a change of key
+ * should produce a new note. Resetting it on pointerup means a fresh drag
+ * always sounds its first key again.
+ */
+const glide = { id: null, midi: null };
+
+/**
+ * Resolve the piano key under a viewport point.
+ * @param {number} x client X
+ * @param {number} y client Y
+ * @returns {number|null} MIDI note, or null when the point is off the keybed
+ */
+function keyAt(x, y) {
+  const el = document.elementFromPoint(x, y);
+  const key = el && el.closest ? el.closest(".key") : null;
+  if (!key) return null;
+  const midi = Number(key.dataset.midi);
+  return Number.isFinite(midi) ? midi : null;
+}
+
+/**
+ * Bind one piano key to its single press path.
+ *
+ * Pointer presses fire on `pointerdown` so the note sounds the instant the
+ * key is touched. A button activated from the keyboard or assistive tech
+ * fires `click` instead, with no pointer event at all — that path used to do
+ * nothing. Routing it through the same `tapKey()` call makes mouse, touch,
+ * Tab+Enter and screen-reader activation literally one code path. A
+ * keyboard-generated click reports `detail === 0`, which is what separates it
+ * from the compatibility click that follows a pointer press.
+ *
+ * Starting a press also arms `glide`, so holding the button and sliding plays
+ * every key the pointer passes over (the window listeners are registered once,
+ * below `buildKeyboard()`).
+ *
+ * @param {HTMLElement} el key element
+ * @param {number} midi note the key plays
+ */
+function bindKey(el, midi) {
+  el.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    glide.id = e.pointerId;
+    glide.midi = midi;
+    tapKey(midi);
+  });
+  el.addEventListener("click", (e) => {
+    if (e.detail === 0) tapKey(midi);
+  });
+}
+
+/**
+ * Render a responsive piano keyboard with absolutely positioned keys.
+ *
+ * White keys divide the width evenly; black keys straddle the boundary
+ * after their preceding white key. Desktop shows four octaves (C2–C6),
+ * narrow screens show two (C3–C5) so the keys stay tappable. The map from
+ * MIDI number to element is kept in `keyEls` for highlight updates.
+ */
+function buildKeyboard() {
+  const wrap = els.keys;
+  wrap.innerHTML = "";
+  keyEls.clear();
+
+  const wide = window.innerWidth >= 760;
+  const start = wide ? 36 : 48;
+  const end = wide ? 84 : 72;
+
+  const whites = [];
+  for (let m = start; m <= end; m++) {
+    if (!isBlackPc(m % 12)) whites.push(m);
+  }
+  const count = whites.length;
+  const w = 100 / count;
+
+  whites.forEach((m, i) => {
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "key white";
+    el.style.left = i * w + "%";
+    el.style.width = w + "%";
+    el.dataset.midi = String(m);
+    el.setAttribute("aria-label", noteName(m));
+    if (m % 12 === 0) {
+      const label = document.createElement("span");
+      label.className = "klabel";
+      label.textContent = noteName(m);
+      el.appendChild(label);
+    }
+    bindKey(el, m);
+    wrap.appendChild(el);
+    keyEls.set(m, el);
+  });
+
+  let seen = 0;
+  for (let m = start; m <= end; m++) {
+    if (!isBlackPc(m % 12)) {
+      seen++;
+      continue;
+    }
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "key black";
+    el.style.left = seen * w - w * 0.31 + "%";
+    el.style.width = w * 0.62 + "%";
+    el.dataset.midi = String(m);
+    el.setAttribute("aria-label", noteName(m));
+    bindKey(el, m);
+    wrap.appendChild(el);
+    keyEls.set(m, el);
+  }
+
+  // Cache centres after layout so `spawnParticle` can put a mote above the key
+  // that produced it. Out-of-range notes (bass below C2, melody above C6) have
+  // no key and snap to the nearest one (see `nearestKeyX`).
+  keyCenters.clear();
+  for (const [m, el] of keyEls) {
+    const r = el.getBoundingClientRect();
+    keyCenters.set(m, r.left + r.width / 2);
+  }
+  // The first and last inserted keys are white, so their centres are the
+  // outermost points a mote may use.
+  const loX = keyCenters.get(start);
+  const hiX = keyCenters.get(end);
+  keyBed = loX != null && hiX != null
+    ? { lo: start, hi: end, left: loX, right: hiX }
+    : null;
+}
+
+/*
+ * Glissando listeners. Registered once at module scope, not in `bindKey()` or
+ * `buildKeyboard()`: the keybed is rebuilt on resize and on narrow screens, so
+ * per-key handlers would either miss new keys or stack up duplicates.
+ *
+ * `elementFromPoint` is what makes a drag work across keys whose DOM elements
+ * change under the pointer; with touch the browser's implicit pointer capture
+ * keeps the events coming to the original key, and they still bubble to
+ * `window`, so this path is identical for mouse, pen and finger.
+ */
+window.addEventListener("pointermove", (e) => {
+  if (glide.id !== e.pointerId) return;
+  // A pointer that drifted back in after leaving the window with the button
+  // released would otherwise keep "dragging" forever.
+  if (e.pointerType === "mouse" && e.buttons === 0) {
+    glide.id = null;
+    glide.midi = null;
+    return;
+  }
+  const midi = keyAt(e.clientX, e.clientY);
+  if (midi == null || midi === glide.midi) return;
+  glide.midi = midi;
+  tapKey(midi);
+});
+function endGlide(e) {
+  if (glide.id !== e.pointerId) return;
+  glide.id = null;
+  glide.midi = null;
+}
+window.addEventListener("pointerup", endGlide);
+window.addEventListener("pointercancel", endGlide);
+
+/**
+ * Briefly light a key that just sounded. A per-element timeout prevents
+ * fast repeated notes from leaving stale highlights behind.
+ *
+ * @param {number} midi
+ */
+function flashKey(midi) {
+  const el = keyEls.get(midi);
+  if (!el) return;
+  el.classList.add("on");
+  clearTimeout(el._flash);
+  el._flash = setTimeout(() => el.classList.remove("on"), 150);
+}
+
+/**
+ * Persistently tint the keys belonging to the current chord, giving the
+ * keyboard a visual memory of the harmony independent of note flashes.
+ *
+ * @param {number[]} notes
+ */
+function setChordHighlight(notes) {
+  const set = new Set(notes || []);
+  for (const [midi, el] of keyEls) {
+    el.classList.toggle("chord", set.has(midi));
+  }
+}
+
+/**
+ * Nudge the audio engine after the page becomes visible or focused again.
+ * Hidden mobile tabs throttle timers and may suspend the AudioContext; on
+ * return we resume it and let `tick()` resynchronise the musical clock.
+ */
+function wakeAudio() {
+  if (!S.playing || !A.ctx) return;
+  if (A.ctx.state !== "running") A.ctx.resume().catch(() => {});
+  if (S.nextTime < A.ctx.currentTime - 0.25) S.nextTime = A.ctx.currentTime + 0.03;
+  tick();
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    wakeAudio();
+  } else {
+    // Fill the larger background horizon immediately, before this page's
+    // timers are slowed down.
+    tick();
+  }
+});
+window.addEventListener("focus", () => {
+  tabFocused = true;
+  wakeAudio();
+});
+window.addEventListener("blur", () => {
+  tabFocused = false;
+  // Fill the new 2 s horizon before the throttled timer gets its next turn.
+  tick();
+});
+window.addEventListener("pageshow", wakeAudio);
+
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    resizeCanvas();
+    buildKeyboard();
+    if (S.chord) setChordHighlight(S.chord.notes);
+  }, 120);
+});
+
+/* ------------------------------------------------------------------ *
+ * UI: state <-> DOM, transport, keyboard shortcuts, first run
+ * ------------------------------------------------------------------ */
+
+let stopToken = 0;
+// Guards the style cross-fade timeout so rapid clicking cannot leave a stale
+// callback raising the master after a newer switch has taken over.
+let styleFadeToken = 0;
+
+/**
+ * Push a chord into the display: name, Roman numeral, unique pitch names,
+ * and the keyboard tint. Kept separate from scheduling so a paused preview
+ * can reuse exactly the same presentation path.
+ *
+ * @param {{label:string,roman:string,notes:number[]}} chord
+ */
+function updateChordUI(chord) {
+  if (!chord) return;
+  els.chordName.textContent = chord.label;
+  els.chordRoman.textContent = chord.roman;
+  const pcs = [...new Set(chord.notes.map(pcName))];
+  els.chordNotes.textContent = pcs.join(" · ");
+  setChordHighlight(chord.notes);
+  // Restart the entrance animation without keeping a timer around. Minimal
+  // mode disables the animation, so it can also skip the forced reflow.
+  els.chordName.classList.remove("swap");
+  if (S.visuals) {
+    void els.chordName.offsetWidth;
+    els.chordName.classList.add("swap");
+  }
+}
+
+/**
+ * Recolour the whole instrument from a style's two accent colours.
+ * CSS custom properties handle the interface; the same values are cached
+ * as RGB triplets for canvas gradients and regenerated glow sprites.
+ *
+ * In the light theme the accents are re-derived (`accentFor`) rather than used
+ * verbatim, so every mood stays legible on a pale stage from one call site.
+ *
+ * @param {object} st style definition
+ */
+function applyPalette(st) {
+  const a = accentFor(st.accent);
+  const b = accentFor(st.accent2);
+  const root = document.documentElement.style;
+  root.setProperty("--accent", a);
+  root.setProperty("--accent2", b);
+  root.setProperty("--accent-rgb", hexToRgb(a));
+  root.setProperty("--accent2-rgb", hexToRgb(b));
+  S.palette = { a: hexToRgb(a), b: hexToRgb(b) };
+  S.sprites = makeSprites();
+  // The cached aurora is baked with the old palette; repaint it next frame.
+  lastBg = -1;
+  refreshStyleDots();
+}
+
+/**
+ * Re-tint the per-style dot swatches. They are set inline from `STYLES` when
+ * the buttons are built, so a theme flip has to rewrite them or the row keeps
+ * showing the dark-stage pastels.
+ */
+function refreshStyleDots() {
+  if (!els.styleRow) return;
+  for (const btn of els.styleRow.children) {
+    const st = STYLE_MAP[btn.dataset.style];
+    if (st) btn.style.setProperty("--c", accentFor(st.accent));
+  }
+}
+
+/**
+ * Reflect playback state on the play button and live badge.
+ */
+function updateTransport() {
+  els.play.setAttribute("aria-pressed", String(S.playing));
+  els.play.setAttribute("aria-label", S.playing ? "Pause" : "Play");
+  els.live.classList.toggle("on", S.playing);
+  els.live.lastElementChild.textContent = S.playing ? "live" : "paused";
+}
+
+/**
+ * Start the canvas animation loop if it is not already running.
+ */
+function startDrawLoop() {
+  if (!S.visuals || rafId) return;
+  lastFrame = 0;
+  rafId = requestAnimationFrame(draw);
+}
+
+/**
+ * Cancel the canvas animation loop. Safe to call when it is already stopped.
+ */
+function stopDrawLoop() {
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = 0;
+}
+
+/**
+ * In minimal mode a slow interval drains audio-timestamped visual events so
+ * the chord name and keyboard feedback stay current without painting. 120 ms
+ * is responsive enough for harmony changes and far cheaper than a frame loop.
+ */
+function startVisualClock() {
+  if (visualTimer) return;
+  visualTimer = setInterval(processVisual, 120);
+}
+
+/**
+ * Stop the minimal-mode event clock.
+ */
+function stopVisualClock() {
+  if (visualTimer) clearInterval(visualTimer);
+  visualTimer = null;
+}
+
+/**
+ * Enable or disable the canvas effects.
+ *
+ * Off stops requestAnimationFrame entirely, hides the canvas, and clears any
+ * live particles. The chord display and key highlights keep updating through
+ * `processVisual`, so the instrument remains usable with zero per-frame canvas
+ * work. The choice is persisted for the next visit.
+ *
+ * @param {boolean} on
+ * @param {boolean} [persist=true] write the preference to localStorage
+ */
+function setVisuals(on, persist = true) {
+  S.visuals = !!on;
+  if (document.body) document.body.classList.toggle("no-visuals", !S.visuals);
+  if (els.visualsBtn) {
+    els.visualsBtn.setAttribute("aria-pressed", String(S.visuals));
+    els.visualsBtn.title = S.visuals ? "Hide visuals (V)" : "Show visuals (V)";
+  }
+
+  particles.length = 0;
+  rings.length = 0;
+
+  if (S.visuals) {
+    stopVisualClock();
+    lastBg = -1;
+    startDrawLoop();
+  } else {
+    stopDrawLoop();
+    if (g2d) g2d.clearRect(0, 0, W, H);
+    startVisualClock();
+  }
+
+  if (persist) {
+    try {
+      localStorage.setItem(VISUALS_KEY, S.visuals ? "on" : "off");
+    } catch (e) {
+      /* Private mode or a file:// origin may refuse storage. */
+    }
+  }
+}
+
+/**
+ * Switch between the dark stage and the pale one.
+ *
+ * Three things have to move together, and they are all here so they cannot
+ * drift apart: the `data-theme` attribute (which flips every CSS variable),
+ * the re-derived accent pair (the moods' pastels are tuned for black), and the
+ * cached aurora buffer (`lastBg = -1`), which is baked with the old palette and
+ * would otherwise linger for up to 100 ms.
+ *
+ * @param {boolean} on
+ * @param {boolean} [persist=true] write the shared `tools-theme` preference
+ */
+function setLight(on, persist = true) {
+  light = !!on;
+  document.documentElement.setAttribute("data-theme", light ? "light" : "dark");
+  if (els.themeBtn) {
+    els.themeBtn.textContent = light ? "\uD83C\uDF19" : "\u2600\uFE0F";
+    els.themeBtn.setAttribute("aria-label", light ? "Switch to dark mode" : "Switch to light mode");
+    els.themeBtn.title = light ? "Switch to dark mode" : "Switch to light mode";
+  }
+  if (S.style) applyPalette(S.style);
+  lastBg = -1;
+  if (persist) {
+    try {
+      localStorage.setItem(THEME_KEY, light ? "light" : "dark");
+    } catch (e) {
+      /* Private mode or a file:// origin may refuse storage. */
+    }
+  }
+}
+
+/**
+ * When paused, step the progression by hand so Skip still shows the next
+ * chord. Playback will start from the following chord because the forced
+ * change flag is left set.
+ */
+function previewNext() {
+  if (!S.style) return;
+  const st = S.style;
+  const degree = st.progression[S.chordIndex % st.progression.length];
+  S.chordIndex++;
+  S.chord = buildChord(degree);
+  S.forceChord = true;
+  updateChordUI(S.chord);
+}
+
+/**
+ * Generate and display a chord without scheduling audio. Used on first
+ * load, after a key change while paused, and whenever a style is selected
+ * before pressing play.
+ */
+function previewChord() {
+  if (!S.style) return;
+  S.chord = buildChord(pick(S.style.progression));
+  updateChordUI(S.chord);
+}
+
+/**
+ * Switch musical style. While the instrument is playing, the change is
+ * cross-faded: the master dips, the old voices are stopped, the new mood is
+ * applied, and the master rises again. Paused, the switch is immediate because
+ * there is nothing sounding to fade.
+ *
+ * @param {string} id style id from `STYLES`
+ */
+function setStyle(id) {
+  if (!STYLE_MAP[id]) return;
+  if (S.playing && S.styleId !== id) {
+    crossfadeToStyle(id);
+    return;
+  }
+  applyStyle(id);
+}
+
+/**
+ * Audible hand-over between two moods. A single master bus cannot overlap old
+ * and new material, so the instrument breathes instead: a short dip to silence
+ * (the old tails fade under it), a clean state reset, then a ramp back up.
+ * A token guards against rapid clicking through the style row.
+ *
+ * @param {string} id style id from `STYLES`
+ */
+function crossfadeToStyle(id) {
+  if (!A.ctx) {
+    applyStyle(id);
+    return;
+  }
+  const token = ++styleFadeToken;
+  const g = A.master.gain;
+  const now = A.ctx.currentTime;
+  g.cancelScheduledValues(now);
+  g.setValueAtTime(Math.max(0.0001, g.value), now);
+  g.exponentialRampToValueAtTime(0.0001, now + 0.28);
+  // Keep the scheduler quiet during the dip so the new mood starts on a bar.
+  S.transitioning = true;
+
+  setTimeout(() => {
+    if (token !== styleFadeToken) return;
+    if (!S.playing) {
+      S.transitioning = false;
+      return;
+    }
+    stopAllVoices();
+    stopVinyl();
+    applyStyle(id);
+    S.step = 0;
+    S.forceChord = true;
+    S.nextTime = A.ctx.currentTime + 0.05;
+    S.transitioning = false;
+    const t = A.ctx.currentTime;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(0.0001, t);
+    g.exponentialRampToValueAtTime(0.9 * S.volume, t + 0.5);
+  }, 300);
+}
+
+/**
+ * Apply a style immediately: reset phrase state, update tempo and palette, and
+ * synchronise the vinyl bed and room settings.
+ *
+ * @param {string} id style id from `STYLES`
+ */
+function applyStyle(id) {
+  const st = STYLE_MAP[id];
+  if (!st) return;
+  const changed = S.styleId !== id;
+
+  S.styleId = id;
+  saveSetting(STORAGE_KEYS.styleId, S.styleId);
+  S.style = st;
+  S.bpm = st.bpm;
+  // Persist the tempo the switch just applied: the saved value always mirrors
+  // what the slider shows, so a reload restores this style's tempo, not the
+  // previous style's.
+  saveSetting(STORAGE_KEYS.tempo, S.bpm);
+  // Space and density are part of the mood too, not global preferences: an
+  // ambient piece opens the room and thins the texture, jazz tightens both.
+  // Persisted like the tempo, so the stored values always describe the mood
+  // that is actually selected and a reload restores its own settings.
+  S.density = st.density == null ? S.density : st.density;
+  S.space = st.space == null ? S.space : st.space;
+  saveSetting(STORAGE_KEYS.density, S.density);
+  saveSetting(STORAGE_KEYS.space, S.space);
+  S.chordIndex = 0;
+  S.arpIndex = 0;
+  S.bassIndex = 0;
+  S.melodyPrev = null;
+  S.prevVoicing = null;
+  S.chord = null;
+  S.forceChord = true;
+
+  if (S.playing) S.step = 0;
+
+  els.tempo.value = st.bpm;
+  els.tempoOut.textContent = st.bpm;
+  setSliderFill(els.tempo);
+  els.density.value = Math.round(S.density * 100);
+  els.densityOut.textContent = els.density.value + "%";
+  setSliderFill(els.density);
+  els.space.value = Math.round(S.space * 100);
+  els.spaceOut.textContent = els.space.value + "%";
+  setSliderFill(els.space);
+  els.styleLabel.textContent = st.name;
+  els.blurb.textContent = st.blurb;
+
+  for (const b of els.styleRow.children) {
+    b.setAttribute("aria-pressed", String(b.dataset.style === id));
+  }
+
+  applyPalette(st);
+  if (A.ctx) {
+    updateSpace();
+    // The vinyl bed belongs to playback, not to the preview state.
+    if (S.playing) {
+      if (st.vinyl) startVinyl();
+      else stopVinyl();
+    }
+  }
+  if (!S.playing) previewChord();
+  else if (!changed) S.forceChord = true;
+}
+
+/**
+ * Modulate to a random tonic. Only the key centre changes; the style's
+ * mode and progression stay intact. The next chord is forced so the change
+ * is audible immediately.
+ */
+function newKey() {
+  S.root = 45 + Math.floor(Math.random() * 12);
+  S.prevVoicing = null;
+  S.melodyPrev = null;
+  S.forceChord = true;
+  if (!S.playing) previewChord();
+}
+
+/**
+ * Ask the scheduler to advance harmony on its next tick. While paused,
+ * preview the following chord instead.
+ */
+function skipChord() {
+  S.forceChord = true;
+  if (!S.playing) previewNext();
+}
+
+/**
+ * Move through the style list in either direction, wrapping around.
+ * @param {number} dir +1 or -1
+ */
+function cycleStyle(dir) {
+  const i = STYLE_ORDER.findIndex((s) => s.id === S.styleId);
+  const next = STYLE_ORDER[(i + dir + STYLE_ORDER.length) % STYLE_ORDER.length];
+  setStyle(next.id);
+}
+
+/**
+ * Build the voice a hand-played note uses, from the mood's own layers.
+ *
+ * The generated melody is a mood's foreground voice, so a pressed key copies
+ * it first; moods without an audible melody fall through to the arpeggio,
+ * then to comping chords, and finally to the pad. Duration, velocity and
+ * level come from that layer unchanged, and the waveform is the mood's own
+ * timbre, which is why a key press now sounds like the piece around it
+ * instead of a separate preset that merely resembled it.
+ *
+ * @returns {{dur:number, vel:number, opts:object}}
+ */
+function tapVoice() {
+  const st = S.style || STYLE_MAP.nocturne;
+  const L = st.layers || {};
+  // Melody is the foreground voice; the arpeggio and comping chords are the
+  // fallbacks in that order, so a key press imitates whatever the mood is most
+  // likely to be playing at that moment.
+  for (const key of ["melody", "arp", "chord"]) {
+    const layer = L[key];
+    if (layer && (layer.prob || 0) > 0 && (layer.level || 0) > 0) {
+      const opts = { timbre: st.timbre, level: layer.level, pan: 0 };
+      // The scheduler's arpeggio voices carry a warm 2-cent detune; copy it so
+      // a hand-played arp note is literally the same voice.
+      if (key === "arp") opts.detune = 2;
+      return {
+        dur: layer.dur == null ? 1 : layer.dur,
+        vel: layer.vel == null ? 0.4 : layer.vel,
+        opts
+      };
+    }
+  }
+  // Pad-only moods: mirror how `advanceChord()` schedules the pad.
+  const p = L.pad || {};
+  return {
+    dur: (st.chordSteps / 4) * (p.stretch || 1),
+    vel: p.vel == null ? 0.3 : p.vel,
+    opts: {
+      timbre: "soft",
+      level: p.level == null ? 0.3 : p.level,
+      attack: p.attack,
+      release: p.release,
+      sustain: 0.72,
+      detune: 5.5
+    }
+  };
+}
+
+/**
+ * Play a single note from a click/tap on the on-screen keyboard. This is
+ * also the most reliable way to unlock audio on mobile before pressing
+ * play, so it explicitly resumes a suspended context.
+ *
+ * @param {number} midi
+ */
+async function tapKey(midi) {
+  try {
+    ensureAudio();
+    if (A.ctx.state === "suspended") await A.ctx.resume();
+    // Cancel a pending pause teardown and make sure the master is audible,
+    // so tapping a key right after pressing pause still makes a sound.
+    stopToken++;
+    A.master.gain.setTargetAtTime(S.volume * 0.9, A.ctx.currentTime, 0.02);
+    // A tap can follow a pause, where both wet returns are muted; bring them
+    // back so the note gets its room instead of sounding bone dry.
+    armTails();
+    const v = tapVoice();
+    playVoice(midi, A.ctx.currentTime + 0.01, v.dur, v.vel, v.opts);
+  } catch (e) {
+    /* Audio is an enhancement; ignore unsupported/blocked contexts. */
+  }
+}
+
+/**
+ * Advertise the piece as media, when the browser supports it. This is what
+ * lets a phone show play/pause controls and treat the tab as an audio app.
+ */
+function setupMediaSession() {
+  if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+  try {
+    if (typeof MediaMetadata !== "undefined") {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: "Infinite Keys",
+        artist: "Generative piano",
+        album: "Endless"
+      });
+    }
+    navigator.mediaSession.setActionHandler("play", () => startMusic());
+    navigator.mediaSession.setActionHandler("pause", () => stopMusic());
+  } catch (e) {
+    /* Media Session is optional. */
+  }
+}
+
+/**
+ * Start (or resume) the endless performance.
+ *
+ * Audio is created/resumed inside the click handler to satisfy autoplay
+ * policy. The scheduler is reset to the top of a bar, the master fades in,
+ * and a stop token invalidates any pending teardown from a previous pause.
+ */
+async function startMusic() {
+  try {
+    ensureAudio();
+    if (A.ctx.state !== "running") await A.ctx.resume();
+  } catch (e) {
+    return;
+  }
+  if (S.playing) return;
+  setupMediaSession();
+  stopToken++;
+  // A rapid stop/start can leave a long pad from the previous phrase alive;
+  // clear the slate before the new downbeat.
+  stopAllVoices();
+  visual.length = 0;
+
+  S.transitioning = false;
+  S.playing = true;
+  S.step = 0;
+  S.chordIndex = 0;
+  S.arpIndex = 0;
+  S.bassIndex = 0;
+  S.melodyPrev = null;
+  S.forceChord = true;
+  S.nextTime = A.ctx.currentTime + 0.06;
+
+  const now = A.ctx.currentTime;
+  A.master.gain.cancelScheduledValues(now);
+  A.master.gain.setTargetAtTime(S.volume * 0.9, now, 0.03);
+  armTails();
+  if (S.style && S.style.vinyl) startVinyl();
+
+  clearInterval(S.timer);
+  S.timer = setInterval(tick, 25);
+  tick();
+  updateTransport();
+}
+
+/**
+ * Pause without discarding the musical state.
+ *
+ * The master fades out over ~40 ms, then sources are stopped and the effect
+ * tails are flushed. The master deliberately stays down: the reverb and delay
+ * buses keep ringing after their inputs stop, so restoring the gain here would
+ * make the last phrase's tail reappear out of an otherwise silent pause.
+ * `startMusic()` and `tapKey()` raise it again. The token check prevents this
+ * delayed teardown from cutting off notes if the user hits play again
+ * immediately.
+ */
+function stopMusic() {
+  if (!S.playing) return;
+  S.playing = false;
+  // Cancel any pending style hand-over so it cannot raise the master after a
+  // pause/play cycle.
+  S.transitioning = false;
+  styleFadeToken++;
+  const token = ++stopToken;
+  clearInterval(S.timer);
+  S.timer = null;
+  visual.length = 0;
+
+  if (A.ctx) {
+    const now = A.ctx.currentTime;
+    A.master.gain.cancelScheduledValues(now);
+    A.master.gain.setTargetAtTime(0.0001, now, 0.035);
+    setTimeout(() => {
+      if (token !== stopToken) return;
+      stopAllVoices();
+      stopVinyl();
+      flushTails();
+    }, 190);
+  }
+  updateTransport();
+}
+
+/**
+ * Single entry point shared by the transport button and the space bar.
+ */
+function togglePlay() {
+  if (S.playing) stopMusic();
+  else startMusic();
+}
+
+/**
+ * Attach all UI behaviour once: style pills, transport, sliders, and the
+ * keyboard shortcuts. Range inputs write directly into `S`; the scheduler
+ * reads that state on every tick, so changes take effect without
+ * rebuilding anything.
+ */
+function wireControls() {
+  // Pills read as a slow-to-fast arc regardless of where a mood sits in the
+  // array, so new entries can be appended together without breaking the flow.
+  // Ids drive selection; declaration order has no other meaning.
+  for (const st of STYLE_ORDER) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "style-btn";
+    b.dataset.style = st.id;
+    b.style.setProperty("--c", st.accent);
+    b.innerHTML = '<span class="dot"></span><span>' + st.name + "</span>";
+    b.setAttribute("aria-pressed", "false");
+    b.addEventListener("click", () => setStyle(st.id));
+    els.styleRow.appendChild(b);
+  }
+
+  els.play.addEventListener("click", togglePlay);
+  els.visualsBtn.addEventListener("click", () => setVisuals(!S.visuals));
+  els.keyBtn.addEventListener("click", newKey);
+  els.skipBtn.addEventListener("click", skipChord);
+  if (els.themeBtn) els.themeBtn.addEventListener("click", () => setLight(!light));
+
+  els.tempo.addEventListener("input", () => {
+    S.bpm = Number(els.tempo.value);
+    els.tempoOut.textContent = S.bpm;
+    setSliderFill(els.tempo);
+    saveSetting(STORAGE_KEYS.tempo, S.bpm);
+  });
+
+  els.density.addEventListener("input", () => {
+    S.density = Number(els.density.value) / 100;
+    els.densityOut.textContent = els.density.value + "%";
+    setSliderFill(els.density);
+    saveSetting(STORAGE_KEYS.density, S.density);
+  });
+
+  els.space.addEventListener("input", () => {
+    S.space = Number(els.space.value) / 100;
+    els.spaceOut.textContent = els.space.value + "%";
+    setSliderFill(els.space);
+    updateSpace();
+    saveSetting(STORAGE_KEYS.space, S.space);
+  });
+
+  els.volume.addEventListener("input", () => {
+    S.volume = Number(els.volume.value) / 100;
+    els.volumeOut.textContent = els.volume.value + "%";
+    setSliderFill(els.volume);
+    saveSetting(STORAGE_KEYS.volume, S.volume);
+    // Only touch the live gain while something is audible. Writing it during a
+    // pause would raise the master onto the reverb tail the teardown muted.
+    if (A.ctx && S.playing) {
+      A.master.gain.setTargetAtTime(S.volume * 0.9, A.ctx.currentTime, 0.04);
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    const tag = (e.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return;
+    // Let a focused button keep its native Space/Enter activation.
+    if ((tag === "button" || tag === "a") && (e.code === "Space" || e.key === "Enter")) return;
+    if (e.code === "Space") {
+      e.preventDefault();
+      togglePlay();
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      cycleStyle(1);
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      cycleStyle(-1);
+    } else if (e.key === "k" || e.key === "K") {
+      newKey();
+    } else if (e.key === "s" || e.key === "S") {
+      skipChord();
+    } else if (e.key === "v" || e.key === "V") {
+      setVisuals(!S.visuals);
+    }
+  });
+}
+
+/**
+ * Diagnostics overlay, enabled by adding `?perf` to the URL. It exists so a
+ * performance complaint can be measured instead of guessed at: rAF cadence,
+ * scheduler tick lateness, long tasks, live voices and the look-ahead in use.
+ * Without the flag `initPerf()` returns immediately and nothing is created.
+ */
+function initPerf() {
+  if (!DIAG.perf) return;
+
+  PERF.on = true;
+  const panel = document.createElement("pre");
+  panel.id = "perf";
+  panel.setAttribute("aria-hidden", "true");
+  document.body.appendChild(panel);
+  PERF.panel = panel;
+
+  // Long tasks are the clearest "the main thread was blocked" signal, but the
+  // API is not universal; without it fps and tick drift still tell the story.
+  if (typeof PerformanceObserver !== "undefined") {
+    try {
+      PERF.observer = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) PERF.longAt.push(entry.startTime);
+      });
+      PERF.observer.observe({ entryTypes: ["longtask"] });
+    } catch (e) {
+      PERF.observer = null;
+    }
+  }
+
+  // Console snapshot: `IKPerf()` in DevTools. The overlay is only a view of
+  // this same state.
+  window.IKPerf = () => ({
+    fps: PERF.fps,
+    worstFrameMs: PERF.worstFrame,
+    tickDriftMs: PERF.drift,
+    worstTickDriftMs: PERF.worstDrift,
+    longTasks: PERF.longAt.length,
+    voices: A.sources.size,
+    horizon: PERF.horizon,
+    hidden: document.hidden,
+    focused: typeof document.hasFocus === "function" ? document.hasFocus() : null,
+    visuals: S.visuals,
+    audio: A.ctx ? A.ctx.state : null,
+    particles: particles.length,
+    dpr: DPR,
+    canvas: canvas.width + "x" + canvas.height,
+    flags: ["noblur", "noaurora", "nofx"].filter((k) => DIAG[k])
+      .concat(isFinite(DIAG.dpr) ? ["dpr=" + DIAG.dpr] : [])
+  });
+
+  PERF.sampleAt = performance.now();
+  PERF.rafId = requestAnimationFrame(perfFrame);
+  perfRender();
+}
+
+/**
+ * Own rAF probe, separate from `draw()` so the frame rate can be read even in
+ * minimal mode, where the canvas loop is deliberately not running.
+ *
+ * @param {number} ts rAF timestamp
+ */
+function perfFrame(ts) {
+  if (!PERF.on) return;
+  if (PERF.lastFrame) {
+    const gap = ts - PERF.lastFrame;
+    // A background tab suspends rAF completely; that gap is not a frame hitch.
+    if (gap > PERF.worstFrame && gap < 5000) PERF.worstFrame = gap;
+  }
+  PERF.lastFrame = ts;
+  PERF.frames++;
+  if (ts - PERF.sampleAt >= 1000) {
+    PERF.fps = PERF.frames * 1000 / (ts - PERF.sampleAt);
+    PERF.frames = 0;
+    PERF.sampleAt = ts;
+    perfRender();
+    PERF.worstFrame = 0;
+    PERF.worstDrift = 0;
+  }
+  PERF.rafId = requestAnimationFrame(perfFrame);
+}
+
+/**
+ * Record how late the 25 ms scheduler interval actually fired. This is the
+ * honest main-thread-busy signal: the timer is cheap, so lateness means the
+ * browser had something else to do first.
+ */
+function perfTick() {
+  if (!PERF.on) return;
+  const now = performance.now();
+  // The first tick after play (or after a pause) has no meaningful interval.
+  if (PERF.lastTick && now - PERF.lastTick < 200) {
+    const drift = Math.max(0, now - PERF.lastTick - 25);
+    PERF.drift = PERF.drift ? PERF.drift * 0.9 + drift * 0.1 : drift;
+    if (drift > PERF.worstDrift) PERF.worstDrift = drift;
+  }
+  PERF.lastTick = now;
+}
+
+/** Repaint the overlay text. Called at most once per second. */
+function perfRender() {
+  if (!PERF.panel) return;
+  const now = performance.now();
+  while (PERF.longAt.length && PERF.longAt[0] < now - 5000) PERF.longAt.shift();
+  const audio = A.ctx ? A.ctx.state : "none";
+  const focus = typeof document.hasFocus === "function"
+    ? (document.hasFocus() ? "focused" : "unfocused")
+    : "?";
+  const flags = ["noblur", "noaurora", "nofx"].filter((k) => DIAG[k]);
+  if (isFinite(DIAG.dpr)) flags.push("dpr=" + DIAG.dpr);
+  const lines = [
+    "fps    " + PERF.fps.toFixed(1).padStart(5) +
+      "   worst frame " + PERF.worstFrame.toFixed(0) + " ms",
+    "tick   drift " + PERF.drift.toFixed(1).padStart(5) +
+      " ms   worst " + PERF.worstDrift.toFixed(0) + " ms",
+    "long   " + PERF.longAt.length + " in 5 s",
+    "audio  " + audio + "   voices " + A.sources.size +
+      "   horizon " + PERF.horizon.toFixed(2) + " s",
+    "page   " + (document.hidden ? "hidden" : "visible") + " / " + focus +
+      " / visuals " + (S.visuals ? "on" : "off"),
+    "canvas " + canvas.width + "x" + canvas.height + " @" + DPR +
+      "x   dpr " + (window.devicePixelRatio || 1),
+    "motes  " + particles.length
+  ];
+  if (flags.length) lines.push("flags  " + flags.join(" "));
+  PERF.panel.textContent = lines.join("\n");
+}
+
+/**
+ * Boot sequence: seed the mood, build the style pills and keyboard, draw a
+ * silent preview chord, and start the animation loop. No audio node exists
+ * until the first gesture.
+ */
+function init() {
+  // The saved slider values have to be read before setStyle(): applyStyle()
+  // resets tempo, density and space to the style's own defaults and persists
+  // them, so the stored values are captured here, re-applied after the style,
+  // and saved again. That is what makes a reload land on the last mood with
+  // the values the visitor left it at.
+  const savedBpm = loadNumber(STORAGE_KEYS.tempo, NaN, 44, 150);
+  const savedSpace = loadNumber(STORAGE_KEYS.space, NaN, 0, 1);
+  const savedDensity = loadNumber(STORAGE_KEYS.density, NaN, 0, 1);
+
+  // Load persisted settings before applying them.
+  S.volume = loadNumber(STORAGE_KEYS.volume, S.volume, 0, 1);
+  // An id from an older build may no longer exist; fall back to the boot mood
+  // rather than leaving the style row unselected and the tempo unset.
+  S.styleId = loadText(STORAGE_KEYS.styleId, S.styleId);
+  if (!STYLE_MAP[S.styleId]) S.styleId = "nocturne";
+
+  S.style = STYLE_MAP[S.styleId];
+  S.root = 45 + Math.floor(Math.random() * 12);
+
+  // An explicit saved choice wins; otherwise respect the OS motion setting.
+  try {
+    const saved = localStorage.getItem(VISUALS_KEY);
+    S.visuals = saved === "off" ? false : saved === "on" ? true : !REDUCED_MOTION;
+  } catch (e) {
+    S.visuals = !REDUCED_MOTION;
+  }
+
+  applyPalette(S.style);
+  wireControls();
+  setStyle(S.styleId);
+
+  // applyStyle() just reset tempo, density and space to the style defaults;
+  // put the saved values back and re-persist them so the next load sees the
+  // same combination.
+  if (!isNaN(savedBpm)) {
+    S.bpm = savedBpm;
+    saveSetting(STORAGE_KEYS.tempo, S.bpm);
+  }
+  if (!isNaN(savedSpace)) {
+    S.space = savedSpace;
+    saveSetting(STORAGE_KEYS.space, S.space);
+  }
+  if (!isNaN(savedDensity)) {
+    S.density = savedDensity;
+    saveSetting(STORAGE_KEYS.density, S.density);
+  }
+
+  // Reflect the final state in the slider inputs so setSliderFill() shows the
+  // correct position, and in the outputs so the readouts match. applyStyle()
+  // already writes tempo/density/space, but the saved overrides above may have
+  // replaced them, and volume is not part of a mood at all.
+  els.tempo.value = S.bpm;
+  els.tempoOut.textContent = S.bpm;
+  els.density.value = Math.round(S.density * 100);
+  els.densityOut.textContent = els.density.value + "%";
+  els.space.value = Math.round(S.space * 100);
+  els.spaceOut.textContent = els.space.value + "%";
+  els.volume.value = Math.round(S.volume * 100);
+  els.volumeOut.textContent = els.volume.value + "%";
+
+  for (const input of [els.tempo, els.density, els.space, els.volume]) {
+    setSliderFill(input);
+  }
+  updateTransport();
+  resizeCanvas();
+  buildKeyboard();
+  previewChord();
+  setVisuals(S.visuals, false);
+  // Sync the toggle glyph and the light-mode accents with the theme the head
+  // script already resolved. Persisting would be a no-op, so skip it.
+  setLight(light, false);
+  // Last: the overlay reads state that everything above has now settled.
+  initPerf();
+}
+
+init();
+
+/**
+ * Keep the stage in step with the rest of the site. `storage` fires when
+ * another tab changes the preference; the media query listener only applies
+ * while no explicit choice is stored, mirroring the head script's precedence.
+ */
+window.addEventListener("storage", (e) => {
+  if (e.key !== THEME_KEY) return;
+  const want = e.newValue === "light";
+  if (want !== light) setLight(want, false);
+});
+if (window.matchMedia) {
+  const mq = window.matchMedia("(prefers-color-scheme: light)");
+  const onScheme = (e) => {
+    let stored = null;
+    try { stored = localStorage.getItem(THEME_KEY); } catch (err) { /* no storage */ }
+    if (stored === "light" || stored === "dark") return;
+    if (e.matches !== light) setLight(e.matches, false);
+  };
+  if (mq.addEventListener) mq.addEventListener("change", onScheme);
+  else if (mq.addListener) mq.addListener(onScheme);
+}
+</script> <!-- build 9822b3e12a45e818 -->

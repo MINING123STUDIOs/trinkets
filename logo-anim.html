@@ -1,0 +1,2019 @@
+<!DOCTYPE html><!-- Logo: Animated logo: the L-system garden's plant preset that the avatar is drawn from. Copyright (C) 2026 MINING123STUDIOS This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>. --><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>MINING123STUDIOs — logo</title><meta name="description" content="Animated logo: the L-system garden's plant preset at 60°, 10 iterations, gradient strokes on the garden's dark background."><style>html,body{height:100%} body{margin:0;background:#14141e;overflow:hidden} canvas{display:block;width:100%;height:100%;cursor:pointer} .sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}</style><h1 class="sr-only">MINING123STUDIOs</h1><canvas id="logo" aria-hidden="true"></canvas><script id="logo-anim-script">
+(function () {
+  'use strict';
+
+  // A monotonic clock for the perf HUD and the audio init timing. Captured
+  // before anything else so the geometry build below can be measured.
+  function msNow() {
+    return (window.performance && window.performance.now)
+      ? window.performance.now() : Date.now();
+  }
+  var T0 = msNow();
+
+  // ---------------------------------------------------------------- theme
+
+  // The page owns the theme and stores it under `tools-theme`; this page is
+  // also usable standalone, so the order is: that stored preference, then the
+  // system setting. Later switches arrive as messages from the parent (see the
+  // listeners at the bottom) — an iframe cannot read the page's data-theme.
+  var THEMES = {
+    dark: { bg: '#14141e', ink: '#ffffff', ring: 'rgba(234,234,234,0.34)' },
+    light: { bg: '#f5f5f5', ink: '#1a1a2e', ring: 'rgba(26,26,46,0.30)' }
+  };
+
+  function detectTheme() {
+    var stored = null;
+    try { stored = localStorage.getItem('tools-theme'); } catch (e) { /* opaque origin */ }
+    if (stored === 'light' || stored === 'dark') return stored;
+    return (window.matchMedia &&
+            window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+  }
+
+  var theme = THEMES[detectTheme()] || THEMES.dark;
+
+  // When embedded (the about page's hero) the parent owns the background and
+  // this page paints none: the canvas is cleared to transparent instead of
+  // filled, so the two can never disagree — not even mid-fade, while the parent
+  // animates its own background. Standalone it has to paint one itself.
+  var embedded = false;
+  try { embedded = window.parent !== window; } catch (e) { embedded = true; }
+
+  // Set before the first paint (the geometry build below blocks it anyway), so
+  // a light page never flashes a dark canvas.
+  function paintPageBg() {
+    document.body.style.background = embedded ? 'transparent' : theme.bg;
+  }
+  paintPageBg();
+
+  var NAME = 'MINING123STUDIOs';
+
+  // The same picture as assets/pfp/gen.py, so the emblem and the avatar are one
+  // design: the garden's plant preset at 60 degrees, ten iterations, leaning 30
+  // degrees counter-clockwise, coloured by drawing order.
+  var AXIOM = 'X';
+  var RULES = { X: 'F[+X][-X]FX', F: 'FF' };
+  var ITERS = 9;           // ~38,600 steps; the avatar uses one level more
+  var BASE_ANGLE = 60;
+  var TILT = -30;          // degrees; negative leans the trunk left
+  var NB = 128;            // colour steps, same buckets as the avatar
+  var HUE0 = 200, HUE1 = 360, SAT = 70, LIG = 60;
+
+  // Design space. The box is 4:3 either way — 1200x900 landscape, 900x1200
+  // portrait — so the short side is always UNIT and every size below is quoted
+  // against it. Portrait only rearranges the lockup (name under the badge
+  // instead of beside it); the badge, ring and type stay the same size.
+  var UNIT = 900;
+  var LONG = Math.round(UNIT * 4 / 3);   // 1200
+
+  // How much of the letterboxed design space the artwork occupies. Below 1 the
+  // composition floats in more background instead of pressing against the
+  // window edges; it is the one knob for "the logo is too big".
+  var ZOOM = 0.72;
+
+  // The plant's line weight, in CSS pixels, at every size and in every phase.
+  // STROKE_SCALE lets an exporter that renders larger than a viewport (the
+  // wallpapers go up to 8K) keep the line's weight relative to the artwork
+  // instead of pinning it to one device pixel, which would be a hairline at
+  // 8K. The page never changes it; the live animation always uses 1.
+  var STROKE_PX = 1;
+  var STROKE_SCALE = 1;
+
+  var FONT_SIZE = 96;
+  var TRACK = FONT_SIZE / 16;   // letter spacing, scaled with the type
+  var GAP = 56;                 // badge-to-name gap
+
+  // Timeline, ms. Play once: grow, contract into the badge, slide, name.
+  //
+  // The grow phase draws run by run in walk order, each run over a slice of
+  // T_GROW proportional to runLen^LEN_EXP (see the runLen block). With
+  // LEN_EXP > 1 the pen is faster on short runs and slower on long ones, so
+  // the whole grow still takes exactly T_GROW.
+  var T_GROW = 2800;
+  var LEN_EXP = 1.8;
+  var T_EMBLEM = 1500, T_SHRINK = 1000, T_NAME = 1100;
+  var T_END = T_GROW + T_EMBLEM + T_SHRINK + T_NAME;
+
+  // Name reveal. Each glyph gets its own slice of the name phase, offset left
+  // to right, so the word lands as a wave instead of one block fading in. The
+  // offset is deliberately tiny - a few milliseconds per glyph - so the whole
+  // word still lands inside a handful of frames at 60 fps and reads as one
+  // reveal with a leading edge, not a ripple.
+  var NAME_STAGGER = 6;    // ms between adjacent glyphs (~5 frames end to end)
+  var NAME_RISE = 24;      // design px a glyph travels up
+
+  // Where the ring starts sweeping, as a fraction of the emblem phase. The
+  // plant contracts during the first part; only once it is inside the ring
+  // does the ring draw itself in, so it never slices through a branch tip.
+  var RING_START = 0.6;
+
+  // Loader. The looping badge is deliberately close to the final emblem's size
+  // so the handoff below only has to travel a little, and it sways instead of
+  // breathing: a pulsing alpha or scale reads as flicker on a page that may sit
+  // there for seconds.
+  var LOADER_SIZE = 1.4;      // x EMBLEM
+  var LOADER_CYCLE = 3200;    // ms per sway + orbit
+  var LOADER_SWAY = 2.5;      // degrees either side
+  var LOADER_ALPHA = 0.95;    // constant
+
+  // Handoff timings, ms. Fold the branch angle away, then retract the resulting
+  // line onto the trunk (see the morph section at the bottom).
+  var T_FOLD = 600, T_SETTLE = 400;
+
+  var canvas = document.getElementById('logo');
+  var ctx = canvas.getContext('2d');
+  // Read once at startup, updated in resize() so zooming re-renders at the new
+  // device pixel ratio. The canvas covers the viewport, so its backing store is
+  // CSS size x DPR, i.e. the physical viewport: capping DPR below the device
+  // value cannot save memory, it only upscales. Browser zoom raises DPR, so a
+  // cap of 2 would go soft past 200%. 4 is a sanity bound, not a budget.
+  var DPR = Math.min(window.devicePixelRatio || 1, 4);
+  var reduced = !!(window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  // ---------------------------------------------------------------- geometry
+
+  function expand() {
+    var s = AXIOM;
+    for (var i = 0; i < ITERS; i++) {
+      var out = '';
+      for (var k = 0; k < s.length; k++) {
+        var ch = s.charAt(k);
+        out += RULES[ch] !== undefined ? RULES[ch] : ch;
+      }
+      s = out;
+    }
+    return s;
+  }
+
+  // turtle: same walk as the garden (start at the origin, heading up), then the
+  // avatar's tilt.
+  //
+  // Consecutive steps that continue in the same direction are merged into one
+  // straight piece. The rules double every F each iteration, so trunks and
+  // branches are long runs of collinear steps: this takes 38,342 steps down to
+  // 9,841 pieces with an identical picture, which is what makes it affordable
+  // to stroke the plant from geometry on every frame (see drawPlant).
+  function walk(str, angleDeg) {
+    var pts = [];        // flat x, y pairs, the merged polylines
+    var start = [];      // index into pts (in points) where each run begins
+    var seg = [];        // step index where each run begins, for the gradient
+    var x = 0, y = 0, dir = -Math.PI / 2, heading = NaN;
+    var rad = angleDeg * Math.PI / 180;
+    var stack = [];
+    var steps = 0;
+
+    for (var i = 0; i < str.length; i++) {
+      var ch = str.charAt(i);
+      if (ch === 'F') {
+        var nx = x + Math.cos(dir), ny = y + Math.sin(dir);
+        if (dir === heading) {
+          // same heading: the run stays a straight line, so move its end
+          // instead of adding a vertex
+          pts[pts.length - 2] = nx;
+          pts[pts.length - 1] = ny;
+        } else {
+          start.push(pts.length / 2);
+          seg.push(steps);
+          pts.push(x, y, nx, ny);
+          heading = dir;
+        }
+        steps++;
+        x = nx; y = ny;
+      } else if (ch === '+') {
+        dir += rad;
+      } else if (ch === '-') {
+        dir -= rad;
+      } else if (ch === '[') {
+        stack.push(x, y, dir);
+      } else if (ch === ']') {
+        dir = stack.pop(); y = stack.pop(); x = stack.pop();
+      }
+    }
+
+    // Rotating here, before normalise, means the fit uses the tilted bounding
+    // box — the same composition the avatar uses.
+    var tr = TILT * Math.PI / 180, tc = Math.cos(tr), ts = Math.sin(tr);
+    for (var j = 0; j < pts.length; j += 2) {
+      var ax = pts[j], ay = pts[j + 1];
+      pts[j] = ax * tc - ay * ts;
+      pts[j + 1] = ax * ts + ay * tc;
+    }
+    return { pts: pts, start: start, seg: seg, steps: steps };
+  }
+
+  // normalise: centre on the bounding box and fit the unit box, so drawing is
+  // just a translate + uniform scale. Returns the farthest ink radius in those
+  // units, which is what the badge ring has to clear.
+  function normalise(g) {
+    var pts = g.pts;
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (var i = 0; i < pts.length; i += 2) {
+      var x = pts[i], y = pts[i + 1];
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    var cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    var span = Math.max(maxX - minX, maxY - minY) || 1;
+    var maxR = 0;
+    for (var j = 0; j < pts.length; j += 2) {
+      pts[j] = (pts[j] - cx) / span;
+      pts[j + 1] = (pts[j + 1] - cy) / span;
+      var r = Math.sqrt(pts[j] * pts[j] + pts[j + 1] * pts[j + 1]);
+      if (r > maxR) maxR = r;
+    }
+    return maxR;
+  }
+
+  var geo = walk(expand(), BASE_ANGLE);
+  var maxR = normalise(geo);
+  // The L-system expansion and the turtle walk run before the first paint, so
+  // this is a real part of the page's startup cost (see the perf HUD).
+  var BUILD_MS = msNow() - T0;
+
+  
+
+  var runCount = geo.start.length;
+  var pointCount = geo.pts.length / 2;
+
+  // Gradient exactly as the garden's gradient mode: hue 200 -> 360 along the
+  // drawing order, so the root stays cyan and the tips go red.
+  var COLORS = [];
+  for (var b = 0; b < NB; b++) {
+    var hue = HUE0 + (b / (NB - 1)) * (HUE1 - HUE0);
+    COLORS.push('hsl(' + hue.toFixed(1) + ',' + SAT + '%,' + LIG + '%)');
+  }
+
+  // One bucket per run, keyed off the step where the run starts, so the colour
+  // still follows the walk rather than the geometry.
+  var BUCKET = new Uint8Array(runCount);
+  for (var r = 0; r < runCount; r++) {
+    BUCKET[r] = Math.min(NB - 1, (geo.seg[r] * NB / geo.steps) | 0);
+  }
+
+  // The run range of every bucket: bucket b owns runs
+  // [BUCKET_END[b], BUCKET_END[b + 1]). BUCKET is monotonic, so one pass builds
+  // the whole table, and a bucket whose last run is behind the pen can be
+  // stroked from a prebuilt path instead of being rebuilt every frame.
+  var BUCKET_END = new Int32Array(NB + 1);
+  (function () {
+    var r = 0;
+    for (var b = 0; b <= NB; b++) {
+      while (r < runCount && BUCKET[r] < b) r++;
+      BUCKET_END[b] = r;
+    }
+  })();
+
+  // Length of every run, in the plant's normalised units. Every run is a
+  // straight piece (walk() merges collinear steps), so its length is simply
+  // first-to-last point.
+  //
+  // These lengths deliberately ignore the gaps between runs. geo.pts is not a
+  // continuous polyline: after a ']' the turtle jumps back to a branch point,
+  // so run r's end and run r+1's start are usually far apart. Summing those
+  // jumps would inflate the total ~90x and starve the real ink (drawPlant must
+  // also never stroke across a run boundary).
+  var runLen = new Float64Array(runCount);
+  for (var rd = 0; rd < runCount; rd++) {
+    var startIdx = geo.start[rd];
+    var endIdx = rd + 1 < runCount ? geo.start[rd + 1] : geo.pts.length / 2;
+    if (endIdx > startIdx + 1) {
+      // Full run length: distance from first to last point
+      var sx = geo.pts[startIdx * 2];
+      var sy = geo.pts[startIdx * 2 + 1];
+      var ex = geo.pts[(endIdx - 1) * 2];
+      var ey = geo.pts[(endIdx - 1) * 2 + 1];
+      var dx = ex - sx, dy = ey - sy;
+      runLen[rd] = Math.sqrt(dx * dx + dy * dy);
+    } else {
+      runLen[rd] = 0;
+    }
+  }
+
+  // The same plant with the branch angle faded to zero, kept index-aligned with
+  // geo so the loader handoff can lerp between the two point for point. With
+  // BASE_ANGLE = 0 the turtle never turns, so every run collapses onto the
+  // trunk's axis: run r covers steps seg[r]..seg[r+1] of one straight line.
+  // After the same TILT and normalise it is one straight segment along the
+  // trunk's -120 degree heading — (0.2887, 0.5) to (-0.2887, -0.5) for this
+  // plant — with the root pinned at the bottom of the box, so folding never
+  // drags the plant off its own stem.
+  var STRAIGHT = new Float64Array(runCount * 4);
+  (function () {
+    var tr = TILT * Math.PI / 180, tc = Math.cos(tr), ts = Math.sin(tr);
+    var tmp = { pts: [] };
+    for (var r = 0; r < runCount; r++) {
+      var s = geo.seg[r], e = r + 1 < runCount ? geo.seg[r + 1] : geo.steps;
+      // Until the tilt, step k sits at (0, -k) because the heading never
+      // changes; rotating that by TILT gives (k*sin, -k*cos).
+      tmp.pts.push(s * ts, -s * tc, e * ts, -e * tc);
+    }
+    normalise(tmp);
+    STRAIGHT.set(tmp.pts);
+  })();
+
+  // Per-run time schedule. A run gets a share of T_GROW proportional to
+  // runLen^LEN_EXP, and its progress is linear inside that slice. With
+  // LEN_EXP > 1 the pen speed (length / time) falls as length rises: short
+  // twigs zip in while the long trunk and limbs are drawn deliberately, and
+  // the whole grow still takes exactly T_GROW ms. LEN_EXP = 1 would be one
+  // uniform speed for every run.
+  var runT0 = new Float64Array(runCount + 1);  // grow-time fraction where run r starts
+  (function () {
+    var cost = new Float64Array(runCount), sum = 0;
+    for (var r = 0; r < runCount; r++) {
+      cost[r] = Math.pow(runLen[r], LEN_EXP);
+      sum += cost[r];
+    }
+    for (var r2 = 0; r2 < runCount; r2++) {
+      runT0[r2 + 1] = runT0[r2] + (sum > 0 ? cost[r2] / sum : 0);
+    }
+    runT0[runCount] = 1;
+  })();
+
+  // ---------------------------------------------------------------- the badge
+
+  // Sizes. The ring is never an independent number: it is always RING_GAP times
+  // the plant's ink radius, so badge and ring keep a fixed ratio in every phase
+  // and only ever scale together.
+  var RING_GAP = 1.06;
+  var ringFor = function (size) { return maxR * size * RING_GAP; };
+
+  // Full-bleed growth size: the ink radius reaches 96% of the short half-side.
+  var GROW = Math.round((UNIT / 2) / maxR * 0.96);
+
+  // The ring arrives at a 2/3-of-the-short-side diameter, so the plant has to
+  // have contracted to whatever size that ring wraps before it appears.
+  var RING_ARRIVE = UNIT / 3;                        // 300
+  var ARRIVE_SIZE = RING_ARRIVE / (maxR * RING_GAP); // ~475
+
+  // Final badge: tied to the type size so the lockup keeps its proportions.
+  var RING_FINAL = Math.round(FONT_SIZE * 2.2);      // ~141
+  var EMBLEM = RING_FINAL / (maxR * RING_GAP);       // ~223
+
+  // Where the intro picks up after the loader handoff: the end of run 0 (the
+  // trunk) and nothing more, because the handoff already drew the trunk. The
+  // pose is derived from the same formulas the grow phase uses, so the morph
+  // can land on it exactly instead of approximating it.
+  var T_HANDOFF = runT0[1] * T_GROW;
+  var HANDOFF_P = T_HANDOFF / T_GROW;
+  var HANDOFF_SETTLE = settleAt(HANDOFF_P);
+  var HANDOFF_SIZE = GROW * (0.94 + 0.06 * HANDOFF_P);
+  var HANDOFF_ROT = -6 * (1 - HANDOFF_SETTLE);
+
+  // ------------------------------------------------------------- progress
+
+  // Overall reveal progress, 0..1 of the grow phase's time schedule. The plant
+  // is stroked from geometry every frame (not from a bitmap) so the line stays
+  // STROKE_PX at every size; see drawPlant. drawPlant maps this fraction through
+  // runT0 to decide how far each run is drawn.
+  var totalProgress = 0;
+
+  function reset() {
+    totalProgress = 0;
+  }
+
+  // Update overall progress fraction f (0..1 of the grow schedule).
+  function revealTo(f) {
+    if (f >= 1) { totalProgress = 1; return; }
+    if (f <= 0) { totalProgress = 0; return; }
+    totalProgress = f;
+  }
+
+  reset();
+
+  // ---------------------------------------------------------------- drawing
+
+  // Design units -> CSS pixels, set by render() for the current frame.
+  var VIEW = 1;
+  // The design origin inside the canvas, in CSS pixels, also set per frame. It
+  // is kept here rather than local to the three render entry points because the
+  // plant cache needs it: a 1:1 blit has to place the bitmap on whole device
+  // pixels, and that means knowing the offset the design transform applies.
+  var OX = 0, OY = 0;
+
+  // The design units -> CSS pixels factor for one frame. Fitting the design box
+  // into the canvas is the responsive rule, but it must not shrink without
+  // limit: browser zoom shrinks the canvas's CSS size at exactly the rate it
+  // magnifies, so a purely fitted VIEW keeps the logo the same physical size at
+  // every zoom level (only the resolution changes).
+  //
+  // Landscape therefore floors the fit at 1: once the window is smaller than
+  // the design box, the box stops shrinking and zoom starts magnifying it, with
+  // the empty height cropped around the centre (OX/OY go negative; the
+  // transform handles it). The floor is itself capped by the width fit so the
+  // lockup, which is wider than the box, can never be cropped horizontally -
+  // the name is the one thing that has to survive.
+  //
+  // Portrait keeps fitting: the stacked lockup has to fit a phone screen, and
+  // browser zoom is not a gesture anyone uses there.
+  function viewFor(W, H, DW, DH) {
+    var fit = Math.min(W / DW, H / DH);
+    if (H <= W) fit = Math.max(fit, Math.min(1, W / DW));
+    return fit * ZOOM;
+  }
+
+  // ------------------------------------------------------------- plant cache
+  //
+  // The badge phases (emblem, shrink, hold, loader) draw the *same* finished
+  // plant over and over, at a size that changes slowly. Re-stroking 9,841
+  // separate runs every frame is what costs ~30 ms a frame on a machine with
+  // nothing else to do; rasterising it once and blitting it is one drawImage.
+  //
+  // The cache is held in plant units at `cacheUp` device pixels per unit, so a
+  // blit is 1:1 whenever the size has not moved since the build. It is rebuilt
+  // when the blit scale would drift past CACHE_TOL, and always at a phase
+  // boundary. That is what makes the final badge exactly the pixels the live
+  // path would have drawn: the hold phase never changes size, so it is built
+  // once, at 1:1, and copied for the rest of its life.
+  //
+  // The grow stays live on purpose. It rotates (-6 degrees settling to 0) and
+  // grows 6%, and a bitmap cannot be rotated without resampling it - that is
+  // the one place where a cache would visibly soften the picture. The morph
+  // stays live for the same reason: its branch angle changes every frame.
+  var CACHE_TOL = 0.85;      // rebuild once the blit scale falls below this
+  var CACHE_MAX = 1500;      // px, cap on one cached raster
+  var cacheCanvas = null, cacheCtx = null, cacheOK = true;
+  var cacheNeed = 0;         // the `up` the cache was built for
+  var cacheUp = 0;           // cache px per plant unit (cacheNeed * supersample)
+  var cachePx = 0;           // cache edge in px
+  var cacheAlpha = -1, cachePhase = '';
+  var cacheBuilds = 0;       // for the perf HUD
+
+  // One Path2D per colour bucket, in plant units, built on first use. Stroking
+  // one rasterises exactly what building the same subpaths by hand would, but
+  // it moves 9,841 JS calls out of the frame loop and into one call per
+  // bucket - which is the whole cost of the frames that cannot be cached.
+  var bucketPaths = null;
+  var HAS_PATH2D = (typeof Path2D === 'function');
+
+  // Consecutive runs that share an endpoint are emitted as one polyline rather
+  // than as separate two-point subpaths. That is free geometry - the polyline
+  // passes through exactly the same points in the same order - and it matters
+  // because the stroker pays per subpath: 9,841 two-point subpaths cost 19,682
+  // round caps to tessellate, while 6,561 chains cost 13,122. A round join
+  // fills the full disc at the vertex, which is the same disc as the two round
+  // caps it replaces, so the picture does not change at all. Runs only meet
+  // where the walk continues without a branch jump; after a ']' the turtle
+  // teleports and the endpoint test fails, which is exactly when a new subpath
+  // (and its two caps) is required.
+  function bucketPathFor(b) {
+    if (!bucketPaths) bucketPaths = new Array(NB);
+    var p = bucketPaths[b];
+    if (p) return p;
+    p = new Path2D();
+    var pts = geo.pts;
+    var from = BUCKET_END[b], to = BUCKET_END[b + 1];
+    var lx = NaN, ly = NaN;      // end of the subpath being built
+    for (var r = from; r < to; r++) {
+      var s = geo.start[r];
+      var e = r + 1 < runCount ? geo.start[r + 1] : pointCount;
+      var x1 = pts[s * 2], y1 = pts[s * 2 + 1];
+      var x2 = pts[(e - 1) * 2], y2 = pts[(e - 1) * 2 + 1];
+      // ===, not a tolerance: the walk's endpoints are the same numbers when a
+      // run continues another, and joining anywhere else would invent a line.
+      if (x1 !== lx || y1 !== ly) p.moveTo(x1, y1);
+      p.lineTo(x2, y2);
+      lx = x2; ly = y2;
+    }
+    bucketPaths[b] = p;
+    return p;
+  }
+
+  // The revealed runs, stroked into `g` in walk order. `g` must already be
+  // transformed so that one plant unit is one unit, with lineWidth set in those
+  // units. Shared by the live path and the cache build so the two cannot drift.
+  function strokePlantRuns(g, f, foldOn, fold) {
+    var pts = geo.pts;
+    // The fold lerps the geometry every frame, so it has to be built live.
+    // Without one the runs are constant and a complete bucket can come from
+    // its prebuilt path.
+    var usePaths = HAS_PATH2D && !foldOn;
+    var currentBucket = -1;
+    var live = true;
+    var lx = NaN, ly = NaN;      // end of the live subpath being built
+
+    for (var r = 0; r < runCount; r++) {
+      // runT0 is cumulative, so once the fraction is before this run's start
+      // every later run is still hidden.
+      if (f <= runT0[r]) break;
+
+      // One bucket per run keeps the colour identical to the finished plant
+      // for the whole animation. BUCKET is monotonic (it follows the walk's
+      // step index), so this is a single ordered pass with one stroke per
+      // bucket change. During the handoff the bucket itself is scaled toward 0,
+      // so the whole plant fades to COLORS[0], the root's cyan, without
+      // building a colour string per run.
+      var bucket = foldOn ? (BUCKET[r] * (1 - fold)) | 0 : BUCKET[r];
+      if (bucket !== currentBucket) {
+        if (currentBucket >= 0) {
+          if (live) g.stroke();
+          else g.stroke(bucketPathFor(currentBucket));
+        }
+        currentBucket = bucket;
+        g.strokeStyle = COLORS[bucket];
+        // Complete once the pen has reached the first run of the next bucket.
+        live = !usePaths || f < runT0[BUCKET_END[bucket + 1]];
+        // A new subpath cannot continue the previous one: the two are stroked
+        // separately, so a join across them would be a join that never draws.
+        lx = NaN;
+        if (live) g.beginPath();
+      }
+      if (!live) continue;
+
+      var s = geo.start[r];
+      var e = r + 1 < runCount ? geo.start[r + 1] : pointCount;
+      var x1 = pts[s * 2], y1 = pts[s * 2 + 1];
+      var x2 = pts[(e - 1) * 2], y2 = pts[(e - 1) * 2 + 1];
+
+      if (foldOn) {
+        var o = r * 4;
+        x1 += (STRAIGHT[o] - x1) * fold;
+        y1 += (STRAIGHT[o + 1] - y1) * fold;
+        x2 += (STRAIGHT[o + 2] - x2) * fold;
+        y2 += (STRAIGHT[o + 3] - y2) * fold;
+      }
+
+      // Progress inside the run's own time slice. The slice length encodes the
+      // per-run speed (see runT0), so this is just a straight interpolation.
+      // A run only ever stops short when it is the last one drawn (the loop
+      // breaks at the next run), so a partial run is never followed by a join.
+      var span = runT0[r + 1] - runT0[r];
+      var p = (f >= runT0[r + 1] || span <= 0) ? 1 : (f - runT0[r]) / span;
+      var ex = x1 + (x2 - x1) * p, ey = y1 + (y2 - y1) * p;
+      if (x1 !== lx || y1 !== ly) g.moveTo(x1, y1);
+      g.lineTo(ex, ey);
+      lx = ex; ly = ey;
+    }
+
+    // Drew everything (f >= 1)
+    if (currentBucket >= 0) {
+      if (live) g.stroke();
+      else g.stroke(bucketPathFor(currentBucket));
+    }
+  }
+
+  // The live path: stroke the revealed runs straight onto the page canvas.
+  function drawPlantLive(cx, cy, size, rotDeg, alpha, fold) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(cx, cy);
+    if (rotDeg) ctx.rotate(rotDeg * Math.PI / 180);
+    ctx.scale(size, size);
+    // lineWidth is expressed in the plant's normalised units, so dividing by
+    // the on-screen size of one unit is what pins the stroke to STROKE_PX.
+    ctx.lineWidth = (STROKE_PX * STROKE_SCALE) / (VIEW * size);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // Draw run by run, in walk order, up to the current grow fraction. Each run
+    // is a straight piece between two points, so a partial run is a single
+    // interpolated lineTo. We never draw from the end of one run into the start
+    // of the next: geo.pts is not a continuous polyline - after a branch the
+    // turtle jumps back to an earlier point, and stroking that jump would smear
+    // a line across the artwork.
+    strokePlantRuns(ctx, totalProgress, fold > 0, fold);
+    ctx.restore();
+  }
+
+  // Rasterise the finished plant at `up` device pixels per plant unit. The
+  // plant's own alpha is baked in, so overlapping buckets composite exactly as
+  // they do live; the blit itself is then opaque. A rotating caller (the
+  // loader's sway) asks for supersampling, which turns the blit into a clean
+  // downscale instead of a resample of a 1 px line.
+  function buildPlantCache(up, alpha, phase) {
+    var s = phase === 'loader' ? 2 : 1;
+    if (2 * maxR * up * s > CACHE_MAX) s = CACHE_MAX / (2 * maxR * up);
+    if (!(s > 0)) return false;
+
+    var px = Math.ceil(2 * maxR * up * s) + 4;
+    try {
+      if (!cacheCanvas) {
+        cacheCanvas = document.createElement('canvas');
+        cacheCtx = cacheCanvas.getContext('2d');
+        if (!cacheCtx) { cacheOK = false; return false; }
+      }
+      cacheCanvas.width = px;
+      cacheCanvas.height = px;
+    } catch (e) {
+      cacheOK = false;
+      return false;
+    }
+
+    var g = cacheCtx;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, px, px);
+    // One plant unit is up*s cache pixels, centred on the canvas.
+    g.setTransform(up * s, 0, 0, up * s, px / 2, px / 2);
+    g.globalAlpha = alpha;
+    // The same on-screen weight as the live path: STROKE_PX CSS px, which is
+    // STROKE_PX * DPR device px, over the up device px a unit spans.
+    g.lineWidth = STROKE_PX * STROKE_SCALE * DPR / up;
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    strokePlantRuns(g, 1, false, 0);
+
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = 1;
+
+    cacheNeed = up;
+    cacheUp = up * s;
+    cachePx = px;
+    cacheAlpha = alpha;
+    cachePhase = phase;
+    cacheBuilds++;
+    return true;
+  }
+
+  // Make sure the cache matches this frame. A cache serves every size from its
+  // own build scale down to CACHE_TOL of it, so the shrink and the hold cost
+  // nothing until the size has moved 15%.
+  function plantCacheFor(up, alpha, phase) {
+    var fits = cacheCanvas && cacheOK && cachePhase === phase &&
+      cacheAlpha === alpha && up <= cacheNeed * 1.0001 &&
+      up >= cacheNeed * CACHE_TOL;
+    if (fits) return true;
+    return buildPlantCache(up, alpha, phase);
+  }
+
+  function drawPlant(cx, cy, size, rotDeg, alpha, fold, phase) {
+    // Live for anything whose geometry or alpha moves every frame, and for a
+    // partially revealed plant (the cache only ever holds the finished one).
+    if (fold > 0 || totalProgress < 1 || !phase ||
+        phase === 'grow' || phase === 'morph' || !cacheOK) {
+      drawPlantLive(cx, cy, size, rotDeg, alpha, fold);
+      return;
+    }
+
+    var up = VIEW * DPR * size;
+    if (!(up > 0) || !plantCacheFor(up, alpha, phase)) {
+      drawPlantLive(cx, cy, size, rotDeg, alpha, fold);
+      return;
+    }
+
+    // The blit is 1:1 when up === cacheNeed (the hold phase), and at most 15%
+    // down otherwise.
+    var scale = up / cacheUp;
+
+    // A 1:1 copy must not go through the design transform. That transform
+    // scales by DPR*VIEW and offsets by DPR*OX/DPR*OY, which are fractional in
+    // general, so the bitmap lands on a fractional device-pixel offset and the
+    // browser resamples the whole badge bilinearly. Every 1 px line then
+    // softens into a 2 px smear, which is exactly what "really blurry at the
+    // end" looks like. Placing it in device space on whole pixels is a straight
+    // copy of the pixels: same picture as the live path, not a resample of it.
+    if (!rotDeg && Math.abs(scale - 1) < 1e-6) {
+      // cachePx is an integer and the scale is exactly 1, so source and
+      // destination are the same size: nothing to interpolate.
+      var w = cachePx;
+      var dx = Math.round(DPR * (VIEW * cx + OX) - w / 2);
+      var dy = Math.round(DPR * (VIEW * cy + OY) - w / 2);
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(cacheCanvas, dx, dy, w, w);
+      ctx.restore();
+      return;
+    }
+
+    // Anything else (the shrink stepping down a rebuild, the loader's sway) is
+    // a resample anyway, so it goes through the design transform and keeps the
+    // smooth sub-pixel motion.
+    var half = cachePx / (2 * cacheUp);
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (rotDeg) ctx.rotate(rotDeg * Math.PI / 180);
+    ctx.scale(size, size);
+    ctx.drawImage(cacheCanvas, -half, -half, 2 * half, 2 * half);
+    ctx.restore();
+  }
+
+  function drawRing(cx, cy, r, sweep, alpha) {
+    if (sweep <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = theme.ring;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * sweep);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // The wordmark is baked-in vector data (the WORDMARK block near FONT_SIZE,
+  // generated by tools/gen_wordmark.py), not live text. Drawing outlines makes
+  // the name identical on every device and in every renderer: no font stack,
+  // no fallback face, no per-engine shaping, so the browser and the committed
+  // exports cannot disagree about letter widths or glyph shapes. It also makes
+  // the lockup width a constant, so render() never needs measureText().
+  var NAME_W = -1;
+
+  function nameWidth() {
+    if (NAME_W < 0) {
+      NAME_W = WORDMARK.track * (NAME.length - 1);
+      for (var i = 0; i < NAME.length; i++) {
+        NAME_W += WORDMARK.glyphs[NAME.charAt(i)].a;
+      }
+    }
+    return NAME_W;
+  }
+
+  // Outline tracing. The generator emits SVG path syntax (M/L/Q/C/Z, absolute)
+  // because it is compact and reviewable in a diff; parsing it once into flat
+  // command arrays keeps the per-frame cost to a loop of canvas calls. Path2D
+  // would be shorter, but node-canvas (used by the offline render checks) has
+  // no Path2D, and one code path for both is the point of baking the data.
+  var OUTLINES = null;
+
+  var PATH_NUM = /-?\d*\.?\d+(?:e[-+]?\d+)?/gi;
+
+  // SVGPathPen optimises runs of points into H/V; keep those in the interpreter
+  // rather than asking the generator to expand them, because the same data has
+  // to render in the shipped SVG (where H/V are the compact, correct form).
+  function parsePath(d) {
+    var out = [];
+    var re = /([MLHVCQZST])([^MLHVCQZST]*)/g;
+    var m;
+    while ((m = re.exec(d))) {
+      // Numbers may run straight into each other ("L0-8.3"): a minus sign is
+      // its own separator in SVG path data, so split on the numeric pattern
+      // rather than on whitespace.
+      var nums = m[2].match(PATH_NUM) || [];
+      var cmd = [m[1]];
+      for (var i = 0; i < nums.length; i++) cmd.push(parseFloat(nums[i]));
+      out.push(cmd);
+    }
+    return out;
+  }
+
+  function tracePath(cmds) {
+    var x = 0, y = 0;
+    for (var i = 0; i < cmds.length; i++) {
+      var c = cmds[i];
+      if (c[0] === 'M') { x = c[1]; y = c[2]; ctx.moveTo(x, y); }
+      else if (c[0] === 'L') { x = c[1]; y = c[2]; ctx.lineTo(x, y); }
+      else if (c[0] === 'H') { x = c[1]; ctx.lineTo(x, y); }
+      else if (c[0] === 'V') { y = c[1]; ctx.lineTo(x, y); }
+      else if (c[0] === 'Q') { x = c[3]; y = c[4]; ctx.quadraticCurveTo(c[1], c[2], x, y); }
+      else if (c[0] === 'C') { x = c[5]; y = c[6]; ctx.bezierCurveTo(c[1], c[2], c[3], c[4], x, y); }
+      else if (c[0] === 'Z') ctx.closePath();
+    }
+  }
+
+  function outlines() {
+    if (!OUTLINES) {
+      OUTLINES = {};
+      for (var ch in WORDMARK.glyphs) {
+        if (Object.prototype.hasOwnProperty.call(WORDMARK.glyphs, ch)) {
+          OUTLINES[ch] = parsePath(WORDMARK.glyphs[ch].d);
+        }
+      }
+    }
+    return OUTLINES;
+  }
+
+  // The name lands as a left-to-right wave: each glyph gets its own slice of
+  // the name phase, offset by NAME_STAGGER, and rises NAME_RISE design px into
+  // place. t is the time elapsed in the phase, in ms. The stagger is spread
+  // over the phase and each glyph rises over whatever is left, so the last one
+  // still lands exactly at T_NAME.
+  function drawName(x, y, t) {
+    var glyphs = WORDMARK.glyphs;
+    var cmds = outlines();
+    var n = NAME.length;
+    var dur = Math.max(1, T_NAME - (n - 1) * NAME_STAGGER);
+    // The outlines are authored around a baseline at y = 0. WORDMARK.mid is the
+    // ink's own vertical centre relative to that baseline, so shifting by it
+    // lands the name optically centred on y instead of on the em box.
+    var baseY = y - WORDMARK.mid;
+    ctx.save();
+    ctx.fillStyle = theme.ink;
+    for (var i = 0; i < n; i++) {
+      var ch = NAME.charAt(i);
+      var p = (t - i * NAME_STAGGER) / dur;
+      if (p > 0) {
+        var e = easeOut(p > 1 ? 1 : p);
+        ctx.save();
+        ctx.translate(x, baseY + NAME_RISE * (1 - e));
+        ctx.globalAlpha = e;
+        ctx.beginPath();
+        tracePath(cmds[ch]);
+        ctx.fill();
+        ctx.restore();
+      }
+      // Advance even while the glyph is hidden: the layout must never shift.
+      x += glyphs[ch].a + WORDMARK.track;
+    }
+    ctx.restore();
+  }
+
+  // The grow phase's rotation curve. Its slope is 1 at p = 0, so the plant
+  // starts at the old linear tilt rate, and 0 at p = 1, so it stops smoothly
+  // instead of snapping upright when the grow ends. The handoff reuses it so
+  // the morph and the intro agree on the pose at T_HANDOFF.
+  function settleAt(p) { return p + p * p - p * p * p; }
+
+  function easeOut(p) { return 1 - Math.pow(1 - p, 3); }
+  function easeInOut(p) {
+    return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+  }
+
+  var lastT = 0;
+
+  // The wordmark: the name's glyph outlines, baked in at FONT_SIZE and TRACK
+  // so no device has to own the font. `mid` is the ink's vertical centre below
+  // the baseline (see drawName). Regenerate with:
+  //
+  //     python3 tools/gen_wordmark.py
+  //
+  // The generator reads FONT_SIZE and TRACK out of this file and refuses to
+  // write if they disagree with the data it would produce, so the outlines and
+  // the layout constants cannot drift apart. Glyph advances come from the same
+  // font table, which is why the baked widths match what measureText() used to
+  // report to within a hundredth of a pixel.
+  // ---- wordmark:start ----
+  // 13 unique glyphs for "MINING123STUDIOs" at 96 px,
+  // weight 600, track 6. Generated; do not edit.
+  var WORDMARK = {
+    size: 96,
+    track: 6,
+    mid: -33.29,
+    glyphs: {
+      "M": { a: 84.86, d: "M6.29 0Q6.68 -8.32 7.18 -17.13Q7.69 -25.94 8.32 -34.65Q8.94 -43.36 9.67 -51.48Q10.39 -59.6 11.31 -66.53H22.1Q24.32 -62.69 26.95 -57.37Q29.58 -52.05 32.36 -46.02Q35.14 -40 37.81 -34Q40.48 -28.01 42.68 -22.93Q44.88 -28.01 47.55 -34Q50.22 -40 53 -46.02Q55.78 -52.05 58.44 -57.37Q61.09 -62.69 63.26 -66.53H73.52Q74.43 -59.6 75.18 -51.48Q75.93 -43.36 76.53 -34.65Q77.14 -25.94 77.66 -17.13Q78.19 -8.32 78.58 0H67.27Q66.99 -8.04 66.63 -16.31Q66.28 -24.58 65.81 -32.81Q65.33 -41.05 64.62 -48.82Q63.45 -46.22 61.62 -42.28Q59.79 -38.34 57.66 -33.69Q55.53 -29.04 53.43 -24.35Q51.34 -19.67 49.56 -15.62Q47.79 -11.57 46.69 -8.94H38.09Q36.99 -11.57 35.22 -15.62Q33.44 -19.67 31.35 -24.35Q29.25 -29.04 27.12 -33.69Q24.99 -38.34 23.16 -42.28Q21.33 -46.22 20.16 -48.82Q19.5 -41.05 19 -32.81Q18.5 -24.58 18.15 -16.31Q17.79 -8.04 17.51 0Z" },
+      "I": { a: 27.65, d: "M8.08 0V-66.53H19.59V0Z" },
+      "N": { a: 70.75, d: "M8.08 0V-66.53H17.39Q20.55 -63.23 24.08 -58.93Q27.61 -54.63 31.29 -49.82Q34.97 -45.01 38.56 -40Q42.15 -34.99 45.38 -30.2Q48.61 -25.41 51.21 -21.18V-66.53H62.63V0H52.99Q50.57 -4.34 47.5 -9.32Q44.43 -14.3 40.95 -19.59Q37.47 -24.88 33.8 -30.06Q30.12 -35.25 26.47 -40Q22.81 -44.75 19.45 -48.69V0Z" },
+      "G": { a: 65.66, d: "M37.25 1.29Q27.8 1.29 20.58 -2.77Q13.36 -6.82 9.32 -14.55Q5.29 -22.28 5.29 -33.31Q5.29 -44.45 9.66 -52.18Q14.04 -59.9 21.42 -63.96Q28.81 -68.02 37.76 -68.02Q43.52 -68.02 47.74 -67.12Q51.97 -66.23 54.74 -65.09Q57.5 -63.96 58.64 -63.15L55.21 -53.77Q52.31 -55.54 48.06 -56.74Q43.81 -57.94 38.84 -57.94Q32.02 -57.94 27.21 -55.05Q22.39 -52.17 19.84 -46.68Q17.29 -41.19 17.29 -33.31Q17.29 -25.9 19.64 -20.32Q21.99 -14.73 26.65 -11.66Q31.31 -8.59 38.25 -8.59Q41.72 -8.59 44.12 -8.89Q46.52 -9.18 47.77 -9.51V-33.63H59.29V-2.03Q57 -1.11 51.29 0.09Q45.58 1.29 37.25 1.29Z" },
+      "1": { a: 54.14, d: "M25.61 0V-51.63Q23.96 -50.3 21.59 -48.92Q19.23 -47.55 16.61 -46.34Q14 -45.14 11.38 -44.28L8.08 -52.79Q13.79 -54.96 19.22 -58.34Q24.65 -61.71 28.91 -66.53H36.63V0Z" },
+      "2": { a: 54.14, d: "M6.2 0Q6.09 -0.7 6.07 -1.89Q6.05 -3.08 6.05 -3.88Q6.05 -10.03 8.68 -14.87Q11.32 -19.71 15.27 -23.79Q19.23 -27.86 23.12 -31.61Q26.28 -34.63 28.87 -37.31Q31.45 -39.99 33.01 -42.77Q34.56 -45.55 34.56 -48.76Q34.56 -54.01 31.68 -56.22Q28.79 -58.44 24.44 -58.44Q20.81 -58.44 17.88 -57.19Q14.95 -55.94 12.98 -54.37Q11 -52.81 10.14 -51.94L4.59 -59.57Q6.63 -61.55 9.61 -63.5Q12.6 -65.45 16.45 -66.73Q20.3 -68.02 24.75 -68.02Q35.61 -68.02 40.79 -63.06Q45.96 -58.11 45.96 -49.46Q45.96 -44.57 43.58 -40.22Q41.2 -35.87 37.5 -31.98Q33.8 -28.09 29.93 -24.41Q27.53 -22.1 24.91 -19.35Q22.3 -16.6 20.42 -13.97Q18.55 -11.34 18.35 -9.34H48.06V0Z" },
+      "3": { a: 54.14, d: "M21.96 1.44Q18.24 1.44 14.62 0.79Q11 0.15 8.18 -0.72Q5.36 -1.58 3.99 -2.22L6.33 -11.54Q8.29 -10.62 12.18 -9.38Q16.07 -8.13 21.74 -8.13Q26.82 -8.13 30.03 -9.48Q33.24 -10.83 34.74 -13.36Q36.24 -15.9 36.24 -19.3Q36.24 -23.7 33.97 -26.18Q31.69 -28.65 27.94 -29.7Q24.19 -30.74 19.63 -30.74H15.97V-39.64H20.62Q23.72 -39.64 26.66 -40.49Q29.6 -41.34 31.51 -43.5Q33.43 -45.65 33.43 -49.57Q33.43 -52.83 31.93 -54.76Q30.44 -56.7 28.07 -57.62Q25.7 -58.54 22.96 -58.54Q18.43 -58.54 15.17 -57.21Q11.91 -55.87 9.48 -54.27L5.37 -62.47Q7.99 -64.17 12.61 -66.09Q17.24 -68.02 23.3 -68.02Q30.68 -68.02 35.36 -65.68Q40.05 -63.35 42.31 -59.3Q44.58 -55.25 44.58 -50.05Q44.58 -45.36 41.99 -41.65Q39.41 -37.93 35.22 -36.14Q38.72 -34.97 41.5 -32.71Q44.28 -30.45 45.89 -27.06Q47.49 -23.67 47.49 -19.11Q47.49 -13.23 44.77 -8.57Q42.05 -3.9 36.42 -1.23Q30.79 1.44 21.96 1.44Z" },
+      "S": { a: 53.28, d: "M24.63 1.39Q16.28 1.39 10.99 -0.37Q5.7 -2.12 3.42 -3.48L6.8 -12.81Q9.33 -11.4 13.74 -9.95Q18.16 -8.49 24.63 -8.49Q31.54 -8.49 34.63 -10.82Q37.73 -13.14 37.73 -17.49Q37.73 -20.81 35.96 -22.91Q34.2 -25.01 30.89 -26.58Q27.58 -28.16 22.86 -29.84Q18.05 -31.64 13.93 -33.94Q9.82 -36.24 7.35 -39.83Q4.88 -43.42 4.88 -49.12Q4.88 -55.08 7.71 -59.3Q10.53 -63.52 15.74 -65.77Q20.94 -68.02 28.07 -68.02Q34.26 -68.02 39.09 -66.6Q43.92 -65.18 46.82 -63.5L43.35 -54.27Q40.56 -55.93 36.89 -57.06Q33.21 -58.18 28.55 -58.18Q22.81 -58.18 19.73 -56.23Q16.65 -54.27 16.65 -50Q16.65 -46.99 18.36 -45.05Q20.07 -43.12 23.02 -41.74Q25.97 -40.37 29.67 -38.95Q35.92 -36.63 40.37 -34.1Q44.81 -31.57 47.22 -27.74Q49.63 -23.92 49.63 -17.57Q49.63 -11.47 46.75 -7.24Q43.87 -3 38.31 -0.8Q32.75 1.39 24.63 1.39Z" },
+      "T": { a: 56.35, d: "M22.43 0V-56.69H1.83V-66.53H54.49V-56.69H33.94V0Z" },
+      "U": { a: 66.82, d: "M33.25 1.39Q24.12 1.39 18.41 -2.04Q12.69 -5.47 10.04 -11.42Q7.39 -17.38 7.39 -24.97V-66.53H18.9V-26.04Q18.9 -16.73 22.93 -12.71Q26.96 -8.69 33.36 -8.69Q39.85 -8.69 43.88 -12.76Q47.91 -16.83 47.91 -26.04V-66.53H59.42V-24.97Q59.42 -17.32 56.71 -11.37Q54.01 -5.42 48.27 -2.02Q42.53 1.39 33.25 1.39Z" },
+      "D": { a: 69.41, d: "M26.49 0.73Q22.46 0.73 17.49 0.37Q12.51 0.01 8.08 -1V-65.49Q12.51 -66.45 17.64 -66.83Q22.76 -67.21 26.8 -67.21Q37.95 -67.21 46.34 -63.64Q54.72 -60.07 59.41 -52.59Q64.09 -45.1 64.09 -33.31Q64.09 -21.88 59.43 -14.32Q54.78 -6.76 46.34 -3.01Q37.9 0.73 26.49 0.73ZM27.26 -9.16Q39.78 -9.16 45.96 -15.6Q52.14 -22.04 52.14 -33.31Q52.14 -44.84 46.11 -51.11Q40.08 -57.37 27.56 -57.37Q24.56 -57.37 22.62 -57.21Q20.68 -57.05 19.59 -56.9V-9.57Q20.47 -9.48 22.24 -9.32Q24.01 -9.16 27.26 -9.16Z" },
+      "O": { a: 75.26, d: "M37.61 1.39Q28.8 1.39 21.44 -2.55Q14.08 -6.48 9.69 -14.21Q5.29 -21.94 5.29 -33.31Q5.29 -41.86 7.86 -48.34Q10.44 -54.82 14.96 -59.21Q19.48 -63.6 25.3 -65.81Q31.12 -68.02 37.61 -68.02Q46.46 -68.02 53.8 -64.11Q61.14 -60.19 65.53 -52.46Q69.93 -44.74 69.93 -33.31Q69.93 -21.94 65.58 -14.21Q61.24 -6.48 53.93 -2.55Q46.62 1.39 37.61 1.39ZM37.61 -8.79Q43.93 -8.79 48.49 -11.81Q53.05 -14.83 55.51 -20.34Q57.98 -25.86 57.98 -33.31Q57.98 -40.82 55.51 -46.33Q53.05 -51.84 48.49 -54.84Q43.93 -57.84 37.61 -57.84Q31.29 -57.84 26.73 -54.82Q22.17 -51.79 19.7 -46.28Q17.24 -40.77 17.24 -33.31Q17.24 -25.86 19.7 -20.34Q22.17 -14.83 26.73 -11.81Q31.29 -8.79 37.61 -8.79Z" },
+      "s": { a: 44.26, d: "M20.01 1.26Q13.42 1.26 9.36 0.13Q5.29 -1 3.79 -1.68L5.88 -10.86Q8.33 -9.91 11.9 -8.89Q15.47 -7.87 20.06 -7.87Q24.62 -7.87 27.01 -9.04Q29.39 -10.21 29.39 -13.26Q29.39 -15.08 28.34 -16.3Q27.3 -17.52 25.11 -18.66Q22.93 -19.8 19.34 -21.17Q15.23 -22.81 11.96 -24.64Q8.69 -26.47 6.8 -29.34Q4.91 -32.21 4.91 -36.79Q4.91 -41.28 7.18 -44.53Q9.44 -47.79 13.62 -49.59Q17.79 -51.4 23.58 -51.4Q28.36 -51.4 32.23 -50.56Q36.1 -49.72 38.11 -48.89L36.01 -40.02Q34.09 -40.8 31.23 -41.58Q28.37 -42.36 24.06 -42.36Q20.38 -42.36 18.11 -41.1Q15.83 -39.83 15.83 -37.11Q15.83 -35.34 16.71 -34.12Q17.6 -32.9 19.63 -31.86Q21.66 -30.81 25.05 -29.53Q30.37 -27.54 33.73 -25.48Q37.09 -23.42 38.75 -20.55Q40.4 -17.69 40.4 -13.29Q40.4 -8.52 38 -5.27Q35.59 -2.02 31.03 -0.38Q26.48 1.26 20.01 1.26Z" }
+    }
+  };
+  // ---- wordmark:end ----
+
+  function render(t) {
+    // Handle time jumps (e.g. the tab was backgrounded): we may have missed
+    // frames entirely, so derive the state from absolute t. A jump past T_GROW
+    // must complete the plant, because the shrink and hold phases below do not
+    // call revealTo themselves.
+    if (t - lastT > 100) {
+      // Derive the grow progress from absolute t. The pen speed is constant,
+      // so progress is simply linear in time.
+      if (t < T_GROW) {
+        revealTo(t / T_GROW);
+      } else {
+        revealTo(1);
+      }
+    }
+    lastT = t;
+    var W = canvas.width / DPR, H = canvas.height / DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    // Clear rather than fill: the background belongs to the page (see
+    // paintPageBg), so a theme switch fades the page and the logo together.
+    ctx.clearRect(0, 0, W, H);
+
+    // Portrait gets the stacked lockup, landscape the side-by-side one.
+    var vertical = H > W;
+    var DW = vertical ? UNIT : LONG;
+    var DH = vertical ? LONG : UNIT;
+
+    // Letterbox the design space into the canvas, then pull back by ZOOM. Once
+    // viewFor's floor pins the scale, the box can be wider/taller than the
+    // canvas: OX/OY then go negative and the box is cropped around its centre.
+    VIEW = viewFor(W, H, DW, DH);
+    OX = (W - DW * VIEW) / 2;
+    OY = (H - DH * VIEW) / 2;
+    ctx.setTransform(DPR * VIEW, 0, 0, DPR * VIEW, DPR * OX, DPR * OY);
+
+    // Final composition: badge + name as one lockup, centred as a group.
+    var tw = nameWidth();
+    var badgeD = 2 * RING_FINAL;
+    var nameH = FONT_SIZE;              // the em box is close enough for layout
+    var endCx, endCy, nameX, nameY;
+    if (vertical) {
+      var stack = badgeD + GAP + nameH;
+      var top = DH / 2 - stack / 2;
+      endCx = DW / 2;
+      endCy = top + RING_FINAL;
+      nameX = DW / 2 - tw / 2;
+      nameY = top + badgeD + GAP + nameH / 2;
+    } else {
+      var groupW = badgeD + GAP + tw;
+      var left = DW / 2 - groupW / 2;
+      endCx = left + RING_FINAL;
+      endCy = DH / 2;
+      nameX = left + badgeD + GAP;
+      nameY = DH / 2;
+    }
+
+    var cx0 = DW / 2, cy0 = DH / 2;
+
+    if (t < T_GROW) {
+      // Grow: the pen runs through the plant in walk order at the per-run speed
+      // set by the runT0 schedule (long limbs slow, short twigs fast). revealTo
+      // is linear in t, so the schedule is followed exactly.
+      var p1 = t / T_GROW;
+      revealTo(p1);
+      // Rotation settles to a stop (see settleAt).
+      var settle = settleAt(p1);
+      drawPlant(cx0, cy0, GROW * (0.94 + 0.06 * p1), -6 * (1 - settle), 1,
+        0, 'grow');
+    } else if (t < T_GROW + T_EMBLEM) {
+      // Contract to the size the arriving ring wraps, then sweep the ring in.
+      revealTo(1);
+      var p2 = (t - T_GROW) / T_EMBLEM;
+      var e2 = easeInOut(Math.min(1, p2 / RING_START));
+      var size2 = GROW + (ARRIVE_SIZE - GROW) * e2;
+      drawPlant(cx0, cy0, size2, 0, 1, 0, 'emblem');
+      var sweep = Math.max(0, (p2 - RING_START) / (1 - RING_START));
+      drawRing(cx0, cy0, ringFor(size2), easeOut(sweep), 0.9);
+    } else if (t < T_GROW + T_EMBLEM + T_SHRINK) {
+      // Shrink and slide into place; the ring rides along at the same ratio.
+      var p3 = (t - T_GROW - T_EMBLEM) / T_SHRINK;
+      var e3 = easeInOut(p3);
+      var cx3 = cx0 + (endCx - cx0) * e3;
+      var cy3 = cy0 + (endCy - cy0) * e3;
+      var size3 = ARRIVE_SIZE + (EMBLEM - ARRIVE_SIZE) * e3;
+      drawPlant(cx3, cy3, size3, 0, 1, 0, 'shrink');
+      drawRing(cx3, cy3, ringFor(size3), 1, 0.9);
+    } else {
+      // Hold the badge, then let the name rise in glyph by glyph.
+      drawPlant(endCx, endCy, EMBLEM, 0, 1, 0, 'hold');
+      drawRing(endCx, endCy, ringFor(EMBLEM), 1, 0.9);
+      drawName(nameX, nameY, t - T_GROW - T_EMBLEM - T_SHRINK);
+    }
+  }
+
+  function resize() {
+    // Re-read devicePixelRatio so browser zoom (which changes DPR) triggers a
+    // re-render at the new resolution instead of upscaling the old bitmap.
+    DPR = Math.min(window.devicePixelRatio || 1, 4);
+    var W = Math.max(1, canvas.clientWidth), H = Math.max(1, canvas.clientHeight);
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    if (loaderOn) renderLoader(loaderLast);
+    else if (morphOn) renderMorph(morphT);
+    else render(lastT);
+  }
+
+  var raf = 0, start = 0;
+
+  function frame(now) {
+    if (!start) {
+      start = now;
+      if (PERF_ON) PERF.reset();
+    }
+    var t = Math.min(T_END, now - start);
+    render(t);
+    SFX.tick(t);
+    if (PERF_ON) PERF.sample(now, t);
+    if (t < T_END) {
+      raf = requestAnimationFrame(frame);
+    } else {
+      raf = 0;
+      if (PERF_ON) PERF.freeze(t);
+    }
+  }
+
+  // Run the intro from t0. The loader handoff uses this to skip the trunk's own
+  // draw-on: the morph has already left the trunk on screen at T_HANDOFF, and
+  // drawPlant at that fraction draws run 0 and nothing else.
+  function startIntro(t0, now) {
+    reset();
+    // reset() leaves the progress at 0 and render()'s jump guard only fires for
+    // gaps over 100 ms, so seed both explicitly or the first frame is blank.
+    revealTo(t0 / T_GROW);
+    lastT = t0;
+    start = now - t0;
+    SFX.begin(t0);
+    if (PERF_ON) PERF.reset();
+    raf = requestAnimationFrame(frame);
+  }
+
+  // ------------------------------------------------------------------ sound
+  //
+  // An optional score, opt-in with `?sfx`. Without the flag nothing in this
+  // block is constructed: no AudioContext, no buffers, no listeners, and the
+  // only cost on the normal path is one boolean check per frame.
+  //
+  // The piece is one struck bell, a beat before the name starts to draw.
+  // Nothing else: no bed, no riser, no pad. The silence before it is the point
+  // - a bell is an event, and an event needs something quiet to interrupt.
+  //
+  // Every decision in it is there for a reason:
+  //
+  //   Pitch      A, prime 110 Hz, hum 55. Low enough to have weight, high
+  //              enough that a phone speaker still carries the prime.
+  //   Timbre     One struck object. Bell partials are inharmonic, so the chord
+  //              they spell cannot be played by a synth - that is the point.
+  //              No pad, no sustained chord, no third in the low register.
+  //   Motion     None until the strike, then the decay. A bell is not a gesture
+  //              in time; it is a moment and its aftermath.
+  //   Duration   The mark is the strike and its tail - long enough to ring
+  //              through the name and past the last frame.
+  //   Resolution The bell lands as the badge settles and the name begins, and
+  //              the hall carries it past the last frame.
+  //
+  // Why not a chord: every previous version was a pad, and a pad has no
+  // attack. A logo is a physical event - something being struck - and without
+  // a transient the ear hears a synth holding a note, however good the harmony
+  // is. A bell's weight comes from three things a pad cannot have: the strike
+  // tone (a short pitch bend under the hit), the noise transient (the mallet
+  // on metal), and inharmonic partials that beat against each other.
+  //
+  // The mood is deliberate. The partials spell A + E + A + E + A + C#: an open
+  // fifth with the major third only two octaves up, which reads as monumental.
+  // A minor third low in the chord reads as sad, which is what the previous
+  // version got wrong.
+  //
+  // Earlier versions were a pentatonic phrase (a children's intro), a held
+  // fifth (a station announcement), a four-chord progression (busy), a
+  // sawtooth through a phaser (a 1970s synth demo), a detuned triangle pad
+  // with a filter bloom (a soft synth - right harmony, no event), and a single
+  // bell under five seconds of swelling air (the air competed with the hit).
+  var SFX_ON = /[?&]sfx\b/.test(location.search);
+  var LOOKAHEAD = 250;   // ms of score scheduled ahead of the frame
+
+  var SFX = (function () {
+    var ctx = null, master = null, limiter = null;
+    var dry = null, send = null, room = null, wet = null;
+    var play = null;        // per-play bus, so a replay can cut the whole score
+    var unlocked = false;
+    var events = null;      // built per play, sorted by score time (ms)
+    var cursor = 0;         // next event index to schedule
+    var wall0 = 0;          // msNow() - currentTime*1000, for the drift readout
+    var running = false;
+    var voices = [];
+    var noiseBuf = null;
+    var initMs = 0;         // how long initCtx() blocked, for the perf HUD
+    var roomMs = 0;         // how long the impulse response took
+    var roomTried = false;
+    var outNode = null;     // limiter, or the master if there is no limiter
+
+    // One knob for the whole piece. Every level below is relative to this.
+    var LEVEL = 1;
+
+    // The bell is struck a beat before the name starts to draw, so its attack
+    // reads with the badge settling into place rather than arriving after the
+    // picture has already moved on.
+    var STRIKE_AT = T_GROW + T_EMBLEM + T_SHRINK - 300;   // 5000
+
+    // ---- the bell -------------------------------------------------------
+    //
+    // A real bell is not a harmonic series. The hum, prime, quint and nominal
+    // sit at fixed ratios that no chord can imitate, and the upper partials
+    // are further out still. That inharmonicity is the whole reason a bell
+    // sounds like struck metal instead of a synth.
+    //
+    // A prime of A2 110 puts the hum at 55 - the weight - and the partials
+    // spell A + E + A + E + A + C#. There is no third below the fifth, so the
+    // sonority is monumental rather than sad.
+    var PRIME = 110;        // A2
+    var PARTIALS = [
+      { r: 0.5,  a: 0.30, d: 3.0, b: 1 },   // hum
+      { r: 1.0,  a: 0.26, d: 3.4, b: 1 },   // prime
+      { r: 1.5,  a: 0.14, d: 2.4 },         // quint
+      { r: 2.0,  a: 0.16, d: 2.8, b: 1 },   // nominal
+      { r: 3.0,  a: 0.08, d: 1.8 },
+      { r: 4.0,  a: 0.06, d: 1.4 },
+      { r: 5.04, a: 0.05, d: 1.2 },         // major third, two octaves up
+      { r: 6.8,  a: 0.03, d: 0.9 },
+      { r: 8.2,  a: 0.02, d: 0.7 }
+    ];
+    var DOUBLE = 0.7;       // partner amplitude for the three loudest partials
+    var BEAT = 5;           // cents between a partial and its partner
+    var THUMP = 0.55;       // the strike tone
+    var TICK = 0.35;        // the noise transient
+
+    // ---- the room -------------------------------------------------------
+    var ROOM_S = 3.2;       // IR length
+    var WET = 0.32;         // hall level
+    var PRE = 0.025;        // pre-delay: the strike stays dry and punchy
+
+    function gainNode(v) {
+      var g = ctx.createGain();
+      g.gain.value = v;
+      return g;
+    }
+
+    function biquad(type, freq, q) {
+      var f = ctx.createBiquadFilter();
+      f.type = type;
+      f.frequency.value = freq;
+      if (q != null) f.Q.value = q;
+      return f;
+    }
+
+    // Register a source so a replay can cut it, and pin its lifetime to its
+    // own decay. start() must precede stop(): the reverse is not portable
+    // across browsers.
+    function startSrc(src, startAt, stopAt, offset) {
+      voices.push(src);
+      src.onended = function () {
+        var i = voices.indexOf(src);
+        if (i >= 0) voices.splice(i, 1);
+        try { src.disconnect(); } catch (e) {}
+      };
+      try { src.start(startAt, offset || 0); } catch (e) {}
+      try { src.stop(stopAt); } catch (e) {}
+    }
+
+    // One second of noise, built once and shared. It is one-pole lowpassed and
+    // normalised: raw white noise is brittle at the top end, and a known RMS
+    // makes the transient level predictable. Only the strike uses it.
+    function noiseBuffer() {
+      if (noiseBuf) return noiseBuf;
+      var rate = ctx.sampleRate;
+      var n = Math.floor(rate);
+      noiseBuf = ctx.createBuffer(1, n, rate);
+      var d = noiseBuf.getChannelData(0);
+      var y = 0;
+      for (var i = 0; i < n; i++) {
+        y = y * 0.55 + (Math.random() * 2 - 1) * 0.45;
+        d[i] = y;
+      }
+      var sum = 0;
+      for (var m = 0; m < n; m++) sum += d[m] * d[m];
+      var scale = 0.5 / (Math.sqrt(sum / n) || 1);
+      for (var q = 0; q < n; q++) d[q] *= scale;
+      return noiseBuf;
+    }
+
+    function noiseSource() {
+      var src = ctx.createBufferSource();
+      src.buffer = noiseBuffer();
+      return src;
+    }
+
+    // A synthesised hall. Filtered noise under a decaying envelope plus a few
+    // early reflections. The tail darkens as it decays - the one-pole
+    // coefficient climbs from roughly 3 kHz to roughly 400 Hz - which is what
+    // a real room does, and what stops the tail from hissing.
+    function makeIR(seconds, decay) {
+      var rate = ctx.sampleRate;
+      var len = Math.max(1, Math.floor(rate * seconds));
+      var buf = ctx.createBuffer(2, len, rate);
+      for (var ch = 0; ch < 2; ch++) {
+        var data = buf.getChannelData(ch);
+        var y = 0;
+        for (var i = 0; i < len; i++) {
+          var t = i / len;
+          var env = Math.pow(1 - t, decay);
+          var k = 0.55 + 0.40 * t;
+          y = y * k + (Math.random() * 2 - 1) * (1 - k);
+          data[i] = y * env;
+        }
+        for (var r = 0; r < 7; r++) {
+          var at = Math.floor(rate * (0.012 + r * 0.019 + Math.random() * 0.01));
+          if (at < len) data[at] += (Math.random() * 2 - 1) * 0.35 * Math.pow(0.72, r);
+        }
+      }
+      return buf;
+    }
+
+    // The per-play bus. Everything the score makes goes through it, so a
+    // replay is one disconnect instead of a walk over the graph.
+    function buildPlay() {
+      play = ctx.createGain();
+      play.gain.value = 1;
+      play.connect(dry);
+      if (send) play.connect(send);
+    }
+
+    // One partial of the bell: a sine with a short attack and its own
+    // exponential decay. Higher partials die first, which is why a bell gets
+    // darker as it rings. `cents` detunes the partner that makes the doublet.
+    function partial(freq, amp, decay, cents, when, out) {
+      var o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = freq;
+      if (cents) o.detune.value = cents;
+      var g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, when - 0.002);
+      g.gain.linearRampToValueAtTime(amp, when + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, when + decay);
+      o.connect(g);
+      g.connect(out);
+      startSrc(o, when, when + decay + 0.15);
+    }
+
+    // The strike. Three layers, in order of what the ear notices:
+    //
+    //   1. the strike tone - a sine dropping from 75 to 50 Hz in 140 ms. Every
+    //      struck object has one, and it is what the body hears as weight.
+    //   2. the noise transient - the mallet on the metal. Without it the bell
+    //      is a sine chord; with it, it is an object.
+    //   3. the partials, each with its own decay, plus a detuned partner on
+    //      the three loudest. Real bells beat because they are not perfectly
+    //      symmetric, and that slow shimmer is the metal.
+    //
+    // All of it starts in phase, so the first few milliseconds are the sum of
+    // every amplitude. The trim scales that sum to just under full scale: the
+    // hit lands as loud as it can without the limiter having to crush it.
+    function strike(when) {
+      var peak = THUMP + TICK;
+      for (var i = 0; i < PARTIALS.length; i++) {
+        peak += PARTIALS[i].a * (PARTIALS[i].b ? 1 + DOUBLE : 1);
+      }
+      var trim = 0.95 * LEVEL / peak;
+
+      var out = gainNode(trim);
+      out.connect(play);
+
+      var th = ctx.createOscillator();
+      th.type = 'sine';
+      th.frequency.setValueAtTime(75, when);
+      th.frequency.exponentialRampToValueAtTime(50, when + 0.14);
+      var tg = ctx.createGain();
+      tg.gain.setValueAtTime(0.0001, when - 0.002);
+      tg.gain.linearRampToValueAtTime(THUMP, when + 0.005);
+      tg.gain.exponentialRampToValueAtTime(0.0001, when + 0.55);
+      th.connect(tg);
+      tg.connect(out);
+      startSrc(th, when, when + 0.65);
+
+      var n = noiseSource();
+      var nh = biquad('highpass', 1400, 0.7);
+      var nl = biquad('lowpass', 7000, 0.7);
+      var ng = ctx.createGain();
+      ng.gain.setValueAtTime(0.0001, when - 0.002);
+      ng.gain.linearRampToValueAtTime(TICK, when + 0.006);
+      ng.gain.exponentialRampToValueAtTime(0.0001, when + 0.09);
+      n.connect(nh);
+      nh.connect(nl);
+      nl.connect(ng);
+      ng.connect(out);
+      startSrc(n, when, when + 0.2);
+
+      for (var p = 0; p < PARTIALS.length; p++) {
+        var part = PARTIALS[p];
+        var f = PRIME * part.r;
+        partial(f, part.a, part.d, 0, when, out);
+        if (part.b) partial(f, part.a * DOUBLE, part.d * 0.9, BEAT, when, out);
+      }
+    }
+
+    // The score. `from` is the score time the piece starts at: 0 for a normal
+    // play, the handoff point when the loader has already drawn part of the
+    // trunk. Only the strike exists, and it stays pinned to the picture.
+    function buildEvents(from) {
+      events = [{ t: STRIKE_AT, kind: 'strike' }];
+    }
+
+    function fire(ev, when) {
+      if (ev.kind === 'strike') strike(when);
+    }
+
+    // Cut everything already scheduled. The per-play bus is dropped rather
+    // than just muted, so a replay starts from a clean graph.
+    function stopVoices() {
+      for (var i = 0; i < voices.length; i++) {
+        try { voices[i].stop(0); } catch (e) {}
+      }
+      voices.length = 0;
+      if (play) { try { play.disconnect(); } catch (e) {} play = null; }
+    }
+
+    // The graph is built in two stages. `initCtx` is the context and the dry
+    // path; `buildRoom` is the convolver, and it is the expensive half - a
+    // 3.2 s stereo impulse response, 282k samples of noise and envelope. Both
+    // used to land inside the pointerdown handler, which cost 111 ms of blocked
+    // main thread on a slow machine: heard as a glitch on the very frame the
+    // score starts, and visible as a 133 ms frame.
+    //
+    // Both stages now run at load, before the first frame is requested: that is
+    // allowed, a context simply starts suspended, and the load path is already
+    // paying for script and layout. The gesture then only has to resume, which
+    // costs nothing measurable. (An idle slot was tried and was worse: the
+    // intro starts on load, so the callback landed in the middle of the grow
+    // and blocked a frame - the same 133 ms hitch, just moved.)
+    function initCtx() {
+      var t0 = msNow();
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      ctx = new AC();
+      master = ctx.createGain();
+      // Unity: every voice carries its own level, so there is no second volume
+      // control to get out of step with the numbers above.
+      master.gain.value = 1;
+      master.connect(ctx.destination);
+
+      // Safety limiter. The strike is normalised to -0.4 dBFS, so this only
+      // touches the transient - it is a guarantee that a brand asset never
+      // clips on any device, not a mix tool.
+      if (ctx.createDynamicsCompressor) {
+        limiter = ctx.createDynamicsCompressor();
+        limiter.threshold.value = -1;
+        limiter.knee.value = 0;
+        limiter.ratio.value = 20;
+        limiter.attack.value = 0.003;
+        limiter.release.value = 0.25;
+        limiter.connect(master);
+      }
+      outNode = limiter || master;
+
+      dry = ctx.createGain();
+      dry.gain.value = 1;
+      dry.connect(outNode);
+
+      stopVoices();
+      buildEvents(0);
+      initMs = msNow() - t0;
+      return true;
+    }
+
+    // The hall. Kept separate from initCtx only so its cost can be measured on
+    // its own: it is the one genuinely expensive thing in the whole score.
+    function buildRoom() {
+      if (!ctx || room || roomTried || !ctx.createConvolver) return;
+      roomTried = true;
+      var t0 = msNow();
+      room = ctx.createConvolver();
+      room.buffer = makeIR(ROOM_S, 1.9);
+      wet = gainNode(WET);
+      // The send is highpassed so the bell's 55 Hz hum stays tight in the dry
+      // path - a hall on a sub is just mud - and pre-delayed so the strike
+      // arrives before the room answers.
+      send = biquad('highpass', 180, 0.7);
+      var pre = ctx.createDelay(0.1);
+      pre.delayTime.value = PRE;
+      send.connect(pre);
+      pre.connect(room);
+      room.connect(wet);
+      wet.connect(outNode);
+      roomMs = msNow() - t0;
+    }
+
+    // Called once, at the end of this script and before the first frame is
+    // requested. Nothing here is audible; the point is that the setup cost is
+    // paid on the load path, where a delay is invisible, rather than in the
+    // gesture handler, where it lands on the frame the animation starts.
+    function prepare() {
+      if (!SFX_ON || reduced) return;
+      if (!ctx && !initCtx()) return;
+      buildRoom();
+    }
+
+    // Resume is asynchronous on every engine (a promise in Chrome and Firefox,
+    // a state flip in Safari). The scheduler waits for `state === 'running'`
+    // rather than assuming, so the first bell cannot be scheduled against a
+    // frozen clock.
+    function resume() {
+      if (!ctx) return;
+      wall0 = 0;                       // re-anchor the drift readout
+      if (ctx.state === 'running') return;
+      if (!ctx.resume) return;
+      try {
+        var p = ctx.resume();
+        if (p && p.then) p.then(null, function () {});
+      } catch (e) {}
+    }
+
+    function unlock() {
+      if (!SFX_ON || unlocked) return;
+      if (!ctx) prepare();
+      if (!ctx) return;
+      unlocked = true;
+      resume();
+    }
+
+    // Start the score at t0. Called from play() (t0 = 0) and from the loader
+    // handoff (t0 = T_HANDOFF, where the intro picks up with the trunk already
+    // drawn). The strike is pinned to the picture either way.
+    function begin(t0) {
+      if (!SFX_ON || !unlocked || !ctx) return;
+      stopVoices();
+      // Safety net: prepare() normally built the hall long before the click.
+      if (!room) buildRoom();
+      buildPlay();
+      buildEvents(t0);
+      cursor = 0;
+      running = true;
+    }
+
+    // Lookahead scheduling: each frame queues only what falls in the next
+    // LOOKAHEAD ms, so if rAF stops (backgrounded tab) the sound stops with the
+    // picture instead of playing over a frozen frame.
+    //
+    // Each cue is placed relative to *this* frame's audio time, not to a clock
+    // pinned when the score started. That is the whole fix for the drift: a
+    // frame that runs late now delays the bell by that frame instead of leaving
+    // it 300 ms off the badge, and an audio thread that stalls for a moment
+    // does not drag the rest of the score with it.
+    function tick(t) {
+      if (!SFX_ON || !running || !ctx || !events) return;
+      // A suspended context has a frozen clock. Scheduling against it would
+      // fire every queued cue at once the moment it resumed.
+      if (ctx.state !== 'running') return;
+      var nowA = ctx.currentTime;
+      var horizon = t + LOOKAHEAD;
+      while (cursor < events.length && events[cursor].t <= horizon) {
+        var ev = events[cursor++];
+        if (ev.t < t - 60) continue;   // late by more than a few frames: skip
+        fire(ev, nowA + Math.max(0, (ev.t - t) / 1000));
+      }
+    }
+
+    // Registered before the play/click listeners, so a gesture unlocks the
+    // context before play() tries to start the score. Reduced motion renders a
+    // single static frame, so there is nothing for a score to follow: no sound.
+    function watch() {
+      if (!SFX_ON || reduced) return;
+      canvas.addEventListener('pointerdown', unlock);
+      window.addEventListener('keydown', unlock);
+      document.addEventListener('visibilitychange', function () {
+        if (!ctx) return;
+        if (document.hidden) { if (ctx.suspend) ctx.suspend(); }
+        else if (unlocked) resume();
+      });
+    }
+
+    // Diagnostics for the perf HUD. `drift` is how far the audio clock has
+    // fallen behind the wall clock since it started: an audio thread being
+    // starved shows up here, in milliseconds, before it is audible as a
+    // dropout. A suspended context freezes its clock, so it reads 0 there.
+    function info(t) {
+      var live = !!ctx && ctx.state === 'running';
+      if (live && !wall0) wall0 = msNow() - ctx.currentTime * 1000;
+      return {
+        state: ctx ? ctx.state : 'none',
+        voices: voices.length,
+        drift: live ? msNow() - ctx.currentTime * 1000 - wall0 : 0,
+        initMs: initMs + roomMs,
+        builds: cacheBuilds
+      };
+    }
+
+    return {
+      watch: watch, prepare: prepare, unlock: unlock, begin: begin,
+      tick: tick, info: info
+    };
+  })();
+
+  SFX.watch();
+
+  // ------------------------------------------------------------------- perf
+  //
+  // Opt-in diagnostics, `?perf`. Nothing here exists without the flag; with it
+  // the page grows one overlay and one boolean check per frame.
+  //
+  // It separates the three things that can make this page feel slow, because
+  // they have completely different fixes:
+  //
+  //   raster   the canvas - 9,841 stroked runs at device-pixel resolution
+  //   main     the JS - geometry, text measurement, the IR build
+  //   audio    the convolution room, which runs on its own thread
+  //
+  // The sparkline is the important part. A max of 140 ms means nothing on its
+  // own; where it sits in the timeline is the whole diagnosis. Green is under
+  // 20 ms, yellow under 33, red over. The overlay freezes when the intro ends
+  // and prints one summary line, so a single screenshot is enough to read it.
+  var PERF_ON = /[?&]perf\b/.test(location.search);
+
+  var PERF = (function () {
+    var MAX = 600;                   // frame times kept: 10 s at 60 fps
+    var dts = new Float32Array(MAX);
+    var n = 0, head = 0, last = 0;
+    var frames = 0, over20 = 0, over33 = 0;
+    var driftMax = 0, longCount = 0, longMs = 0;
+    var frozen = false, textAt = 0;
+    var box = null, label = null, spark = null, sctx = null;
+
+    function f1(v) { return (Math.round(v * 10) / 10).toFixed(1); }
+    function f2(v) { return (Math.round(v * 100) / 100).toFixed(2); }
+
+    function build() {
+      box = document.createElement('div');
+      box.setAttribute('aria-hidden', 'true');
+      box.style.cssText =
+        'position:fixed;left:10px;top:10px;z-index:2147483647;' +
+        'font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;' +
+        'color:#9fe8ff;background:rgba(8,8,14,.78);padding:6px 8px;' +
+        'border:1px solid rgba(159,232,255,.25);border-radius:6px;' +
+        'pointer-events:none;white-space:pre;text-align:left';
+      label = document.createElement('div');
+      box.appendChild(label);
+      spark = document.createElement('canvas');
+      spark.width = 180;
+      spark.height = 34;
+      spark.style.cssText = 'display:block;margin-top:5px;width:180px;height:34px';
+      box.appendChild(spark);
+      sctx = spark.getContext('2d');
+      document.body.appendChild(box);
+
+      // Long tasks are the only way to see a main-thread block that lands
+      // between two frames: the geometry build, the IR generation, a style
+      // recalc. Not every browser has it; absence is not an error.
+      try {
+        new PerformanceObserver(function (list) {
+          var es = list.getEntries();
+          for (var i = 0; i < es.length; i++) { longCount++; longMs += es[i].duration; }
+        }).observe({ entryTypes: ['longtask'] });
+      } catch (e) {}
+    }
+
+    function reset() {
+      n = 0; head = 0; last = 0;
+      frames = 0; over20 = 0; over33 = 0;
+      driftMax = 0; longCount = 0; longMs = 0;
+      frozen = false; textAt = 0;
+    }
+
+    // One sorted copy per readout, not one per percentile.
+    function stats() {
+      var a = [];
+      for (var i = 0; i < n; i++) a.push(dts[i]);
+      a.sort(function (x, y) { return x - y; });
+      return {
+        p50: a[Math.min(n - 1, Math.floor(n * 0.5))] || 0,
+        p95: a[Math.min(n - 1, Math.floor(n * 0.95))] || 0,
+        max: a[n - 1] || 0
+      };
+    }
+
+    function drawSpark() {
+      if (!sctx) return;
+      var W = spark.width, H = spark.height, m = Math.min(n, W);
+      sctx.clearRect(0, 0, W, H);
+      sctx.fillStyle = 'rgba(159,232,255,.07)';
+      sctx.fillRect(0, 0, W, H);
+      if (!m) return;
+      var bar = W / m;
+      for (var i = 0; i < m; i++) {
+        var v = dts[(head - m + i + MAX) % MAX];
+        var h = Math.min(H, Math.max(1, (v / 50) * H));
+        sctx.fillStyle = v > 33 ? '#ff6b6b' : v > 20 ? '#ffd166' : '#7ee787';
+        sctx.fillRect(i * bar, H - h, Math.max(1, bar - 0.4), h);
+      }
+      // 16.7 and 33.3 ms guides.
+      sctx.fillStyle = 'rgba(255,255,255,.16)';
+      sctx.fillRect(0, H - Math.round(16.7 / 50 * H), W, 1);
+      sctx.fillRect(0, H - Math.round(33.3 / 50 * H), W, 1);
+    }
+
+    function render(info) {
+      if (!label) return;
+      var st = stats();
+      var mp = (canvas.width * canvas.height) / 1e6;
+      label.textContent = [
+        'p50 ' + f1(st.p50) + '  p95 ' + f1(st.p95) + '  max ' + f1(st.max) + '  ms',
+        'frames ' + frames + '   ' + over20 + '>20   ' + over33 + '>33',
+        'canvas ' + f1(mp) + ' MP @ ' + f1(DPR) + 'x',
+        'audio ' + info.state + '   ' + info.voices + ' src   drift ' +
+          f1(info.drift) + ' ms',
+        'long ' + longCount + '/' + Math.round(longMs) + ' ms   build ' +
+          f1(BUILD_MS) + ' ms   init ' + f1(info.initMs) + ' ms   cache ' +
+          info.builds
+      ].join('\n');
+    }
+
+    function sample(nowMs, t) {
+      if (!PERF_ON || !box) return;
+      if (last) {
+        var dt = nowMs - last;
+        if (dt > 0 && dt < 2000) {
+          dts[head] = dt;
+          head = (head + 1) % MAX;
+          if (n < MAX) n++;
+          frames++;
+          if (dt > 20) over20++;
+          if (dt > 33) over33++;
+        }
+      }
+      last = nowMs;
+
+      var info = SFX.info(t);
+      if (Math.abs(info.drift) > Math.abs(driftMax)) driftMax = info.drift;
+
+      if (frozen) return;
+      if (nowMs - textAt > 250) {
+        textAt = nowMs;
+        render(info);
+        drawSpark();
+      }
+    }
+
+    function freeze(t) {
+      if (!PERF_ON || !box) return;
+      frozen = true;
+      var info = SFX.info(t);
+      var st = stats();
+      var mp = (canvas.width * canvas.height) / 1e6;
+      render(info);
+      drawSpark();
+      var line = 'INTRO ' + f2(t / 1000) + 's | ' + frames + ' frames | p50 ' +
+        f1(st.p50) + ' | p95 ' + f1(st.p95) + ' | max ' + f1(st.max) + ' | ' +
+        over20 + ' >20ms | ' + over33 + ' >33ms | long ' + longCount + '/' +
+        Math.round(longMs) + 'ms | ' + f1(mp) + ' MP @ ' + f1(DPR) + 'x | build ' +
+        f1(BUILD_MS) + 'ms | init ' + f1(info.initMs) + 'ms | cache ' +
+        info.builds + ' | drift max ' + f1(driftMax) + 'ms | ' + info.state;
+      label.textContent += '\n\n' + line;
+      if (window.console && console.log) console.log(line);
+    }
+
+    if (PERF_ON) build();
+
+    return { sample: sample, reset: reset, freeze: freeze };
+  })();
+
+  function play() {
+    var wasLoading = loaderOn;
+    stopLoader();
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+    if (reduced) {
+      reset();
+      revealTo(1);
+      render(T_END);
+      return;
+    }
+    // A loader hands off through the morph instead of jumping to an empty
+    // plant; without one (the about.html splash) the full draw-on plays.
+    if (wasLoading) { startMorph(); return; }
+    reset();
+    lastT = 0;
+    start = 0;
+    SFX.begin(0);
+    raf = requestAnimationFrame(frame);
+  }
+
+  // ------------------------------------------------------------ loader mode
+  //
+  // A looping variant of the same badge, meant as a page loader: the emblem
+  // sways while a short arc orbits the ring, and it keeps going until the host
+  // calls LogoAnim.play() (or posts { type: 'play' }), which hands off to the
+  // real intro (see the morph section at the bottom). Try it standalone with
+  // #loader, or from a parent frame with postMessage({ type: 'loader' }).
+  var loaderOn = false;
+  var loaderRaf = 0;
+  var loaderStart = 0;
+  var loaderLast = 0;
+
+  function drawArc(cx, cy, r, from, sweep, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = theme.ring;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, from, from + sweep);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function renderLoader(t) {
+    loaderLast = t;
+    var W = canvas.width / DPR, H = canvas.height / DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    var vertical = H > W;
+    var DW = vertical ? UNIT : LONG;
+    var DH = vertical ? LONG : UNIT;
+    VIEW = viewFor(W, H, DW, DH);
+    OX = (W - DW * VIEW) / 2;
+    OY = (H - DH * VIEW) / 2;
+    ctx.setTransform(DPR * VIEW, 0, 0, DPR * VIEW, DPR * OX, DPR * OY);
+
+    var cx = DW / 2, cy = DH / 2;
+    var size = EMBLEM * LOADER_SIZE;
+    // One cycle drives both the sway and the orbit, so they read as a single
+    // motion rather than two independent animations.
+    var phase = reduced ? 0 : (t % LOADER_CYCLE) / LOADER_CYCLE;
+    var sway = reduced ? 0 : LOADER_SWAY * Math.sin(phase * Math.PI * 2);
+    drawPlant(cx, cy, size, sway, LOADER_ALPHA, 0, 'loader');
+    if (reduced) {
+      drawRing(cx, cy, ringFor(size), 1, 0.55);
+    } else {
+      // A 198-degree arc chasing its own tail: the classic loader read, drawn
+      // from the badge's own ring so it still looks like the logo.
+      var a0 = phase * Math.PI * 2 - Math.PI / 2;
+      drawArc(cx, cy, ringFor(size), a0, Math.PI * 1.1, 0.85);
+    }
+  }
+
+  function loaderFrame(now) {
+    if (!loaderOn) return;
+    if (!loaderStart) loaderStart = now;
+    renderLoader(now - loaderStart);
+    // Score time is 0 in the loader: nothing is playing, so this only keeps the
+    // frame-time statistics honest while the badge orbits.
+    if (PERF_ON) PERF.sample(now, 0);
+    loaderRaf = requestAnimationFrame(loaderFrame);
+  }
+
+  function startLoader() {
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
+    stopLoader();
+    loaderOn = true;
+    loaderStart = 0;
+    reset();
+    if (PERF_ON) PERF.reset();
+    revealTo(1);
+    if (reduced) {
+      renderLoader(0);
+      return;
+    }
+    loaderRaf = requestAnimationFrame(loaderFrame);
+  }
+
+  function stopLoader() {
+    loaderOn = false;
+    // An in-flight handoff is part of "loading" too: cancelling it must not
+    // leave a half-folded plant pinned on screen with no animation running.
+    morphOn = false;
+    if (loaderRaf) {
+      cancelAnimationFrame(loaderRaf);
+      loaderRaf = 0;
+    }
+    if (morphRaf) {
+      cancelAnimationFrame(morphRaf);
+      morphRaf = 0;
+    }
+  }
+
+  // --------------------------------------------------------- loader handoff
+  //
+  // play() must not cut from the fully drawn loader to an empty plant. Instead
+  // the loader's plant folds onto its own trunk axis (STRAIGHT), its palette
+  // fades to the root's cyan and the orbit retracts to nothing; the resulting
+  // single line then shrinks onto the trunk's pose at T_HANDOFF, and the intro
+  // starts there with the trunk already drawn. Each stage ends on exactly the
+  // state the next one begins with, so nothing is ever crossfaded.
+  var morphOn = false;
+  var morphRaf = 0;
+  var morphStart = 0;
+  var morphT = 0;
+  var morphSway = 0;    // loader sway frozen when play() was called
+  var morphPhase = 0;   // loader orbit phase at that moment
+
+  // The folded plant is one segment: STRAIGHT's first run starts at the root,
+  // its last run ends at the far tip.
+  var LINE_A = [STRAIGHT[0], STRAIGHT[1]];
+  var LINE_B = [STRAIGHT[STRAIGHT.length - 2], STRAIGHT[STRAIGHT.length - 1]];
+  // Run 0 is the trunk — the piece the folded line has to become.
+  var TRUNK_A = [geo.pts[0], geo.pts[1]];
+  var TRUNK_B = [geo.pts[(geo.start[1] - 1) * 2], geo.pts[(geo.start[1] - 1) * 2 + 1]];
+
+  function startMorph() {
+    if (morphRaf) { cancelAnimationFrame(morphRaf); morphRaf = 0; }
+    // Capture the sway and orbit phase at the moment of the handoff, so the
+    // fold's first frame is the frame that was on screen when play() was
+    // called. The orbit keeps turning from there; only its sweep retracts.
+    var phase = (loaderLast % LOADER_CYCLE) / LOADER_CYCLE;
+    morphPhase = phase;
+    morphSway = LOADER_SWAY * Math.sin(phase * Math.PI * 2);
+    morphOn = true;
+    morphStart = 0;
+    morphT = 0;
+    revealTo(1);
+    morphRaf = requestAnimationFrame(morphFrame);
+  }
+
+  function morphFrame(now) {
+    if (!morphOn) return;
+    if (!morphStart) morphStart = now;
+    var t = now - morphStart;
+    if (t >= T_FOLD + T_SETTLE) {
+      morphOn = false;
+      morphRaf = 0;
+      startIntro(T_HANDOFF, now);
+      return;
+    }
+    renderMorph(t);
+    morphRaf = requestAnimationFrame(morphFrame);
+  }
+
+  function renderMorph(t) {
+    morphT = t;
+    var W = canvas.width / DPR, H = canvas.height / DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    var vertical = H > W;
+    var DW = vertical ? UNIT : LONG;
+    var DH = vertical ? LONG : UNIT;
+    VIEW = viewFor(W, H, DW, DH);
+    OX = (W - DW * VIEW) / 2;
+    OY = (H - DH * VIEW) / 2;
+    ctx.setTransform(DPR * VIEW, 0, 0, DPR * VIEW, DPR * OX, DPR * OY);
+
+    var cx = DW / 2, cy = DH / 2;
+    var sizeL = EMBLEM * LOADER_SIZE;
+
+    if (t < T_FOLD) {
+      // Fold: the branch angle goes to 0 (drawPlant's fold argument), the
+      // colours slide to the root's cyan and the arc keeps orbiting while its
+      // sweep retracts to nothing.
+      var e = easeInOut(t / T_FOLD);
+      drawPlant(cx, cy, sizeL, morphSway * (1 - e),
+        LOADER_ALPHA + (1 - LOADER_ALPHA) * e, e, 'morph');
+      var a0 = (morphPhase + t / LOADER_CYCLE) * Math.PI * 2 - Math.PI / 2;
+      drawArc(cx, cy, ringFor(sizeL), a0, Math.PI * 1.1 * (1 - e), 0.85 * (1 - e));
+      return;
+    }
+
+    // Settle: the line retracts onto the trunk's pose at T_HANDOFF. Both already
+    // share the trunk's heading, so this is a plain endpoint lerp — no rotation
+    // has to be solved for, and the root end only travels because the plant
+    // scales from the loader's size to the grow's.
+    var q = easeInOut(Math.min(1, (t - T_FOLD) / T_SETTLE));
+    var rad = HANDOFF_ROT * Math.PI / 180, c = Math.cos(rad), s = Math.sin(rad);
+    var ax0 = cx + LINE_A[0] * sizeL, ay0 = cy + LINE_A[1] * sizeL;
+    var bx0 = cx + LINE_B[0] * sizeL, by0 = cy + LINE_B[1] * sizeL;
+    var ax1 = cx + (TRUNK_A[0] * c - TRUNK_A[1] * s) * HANDOFF_SIZE;
+    var ay1 = cy + (TRUNK_A[0] * s + TRUNK_A[1] * c) * HANDOFF_SIZE;
+    var bx1 = cx + (TRUNK_B[0] * c - TRUNK_B[1] * s) * HANDOFF_SIZE;
+    var by1 = cy + (TRUNK_B[0] * s + TRUNK_B[1] * c) * HANDOFF_SIZE;
+
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = COLORS[0];
+    // The context is already in design units, so this is the same on-screen
+    // weight drawPlant pins — no extra plant scale to divide out.
+    ctx.lineWidth = STROKE_PX / VIEW;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(ax0 + (ax1 - ax0) * q, ay0 + (ay1 - ay0) * q);
+    ctx.lineTo(bx0 + (bx1 - bx0) * q, by0 + (by1 - by0) * q);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Repaint in a new theme. The plant's colours are the avatar's and do not
+  // change; only the background, the type and the ring do. The page fades its
+  // background over 0.3s, so the ink and the ring switch at the midpoint of that
+  // fade — otherwise white type would sit on a nearly white background for a
+  // moment. Nothing stale shows in between: the canvas is transparent.
+  var themeTimer = 0;
+  function setTheme(name) {
+    if (!THEMES[name] || THEMES[name] === theme) return;
+    theme = THEMES[name];
+    paintPageBg();
+    clearTimeout(themeTimer);
+    themeTimer = setTimeout(function () {
+      if (loaderOn) renderLoader(loaderLast);
+      else if (morphOn) renderMorph(morphT);
+      else render(lastT || 0);
+    }, 150);
+  }
+
+  canvas.addEventListener('click', play);
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'r' || e.key === 'R') play();
+  });
+  window.addEventListener('resize', resize);
+
+  // Some browsers (esp. Firefox, Safari) don't fire resize on pure pinch-zoom.
+  // A cheap 500 ms poll catches any DPR change reliably.
+  setInterval(function () {
+    var newDPR = Math.min(window.devicePixelRatio || 1, 4);
+    if (newDPR !== DPR) resize();
+  }, 500);
+
+  // Theme switches: the parent page posts the new name when its toggle is
+  // used; the storage event covers same-origin embeds on its own, and both are
+  // harmless when they arrive together.
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (!d) return;
+    if (d.type === 'theme') setTheme(d.theme);
+    else if (d.type === 'loader') startLoader();
+    else if (d.type === 'play') play();
+    else if (d.type === 'render') {
+      // A canvas that cannot be allocated (a too-large 8K request on a phone,
+      // say) must answer with an error instead of throwing here: the host
+      // otherwise waits forever for a reply that never comes.
+      try {
+        exportStill(d);
+      } catch (err) {
+        window.parent.postMessage(
+          { type: 'wallpaper', id: d.id, error: String((err && err.message) || err) },
+          '*'
+        );
+      }
+    }
+  });
+  window.addEventListener('storage', function (e) {
+    if (e.key === 'tools-theme') setTheme(e.newValue);
+  });
+
+  // Public hooks for a host page. `loader()` starts the looping badge,
+  // `play()` stops it and runs the real intro, `stopLoader()` just stops.
+  // `still(t)` renders one fixed frame from the same timeline render() uses
+  // (0 = empty canvas, T_END = final lockup) and parks every loop, which is
+  // what static exports and the export-mode wallpaper renderer need.
+  // `setTheme()` picks a theme by name for those hosts; the page itself keeps
+  // listening to the system preference and the storage event.
+  //
+  // Everything an exporter needs lives here on purpose: a still has to be the
+  // page's own render() at a known time, not a re-implementation of it.
+  function still(t) {
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
+    stopLoader();
+    if (themeTimer) { clearTimeout(themeTimer); themeTimer = 0; }
+    reset();
+    revealTo(t >= T_GROW ? 1 : Math.max(0, t) / T_GROW);
+    lastT = t;
+    render(t);
+  }
+
+  // Wallpapers are rendered far above any viewport size, where a line pinned to
+  // one device pixel reads as a hairline against a ring that scales with the
+  // design box. setStrokeScale multiplies the plant's line weight so an export
+  // can keep the 1:1 weight it would have at a normal window; 1 (the default)
+  // is exactly the live animation. The plant cache is invalidated because its
+  // raster is built at the current weight.
+  function setStrokeScale(scale) {
+    STROKE_SCALE = scale > 0 ? scale : 1;
+    cacheNeed = 0;
+  }
+
+  window.LogoAnim = {
+    play: play,
+    loader: startLoader,
+    stopLoader: stopLoader,
+    setTheme: setTheme,
+    still: still,
+    setStrokeScale: setStrokeScale,
+    themes: THEMES,
+    timeline: { grow: T_GROW, emblemEnd: T_GROW + T_EMBLEM, end: T_END }
+  };
+
+  // ------------------------------------------------------------- export mode
+  //
+  // The wallpaper pages embed this page off-screen (?export) and ask for one
+  // still at an arbitrary pixel size. That keeps a single renderer: the
+  // wallpaper is the animation's own output at the screen's resolution, not a
+  // shipped file that could drift from it.
+  //
+  // The answer is a PNG Blob posted back to the host. Blobs survive
+  // structured clone, so a 4K or 8K picture never turns into a data URL.
+  // Rendering happens on a throwaway pair of canvases, and both are released
+  // afterwards, because a configurator may request dozens of sizes in a row.
+  var EXPORT_MODE = /[?&]export\b/.test(location.search);
+
+  function exportStill(cfg) {
+    var w = Math.max(1, Math.round(cfg.w || 0));
+    var h = Math.max(1, Math.round(cfg.h || 0));
+    var themeName = cfg.theme === 'light' ? 'light' : 'dark';
+    var t = cfg.frame === 'emblem' ? T_GROW + T_EMBLEM : T_END;
+
+    // One CSS pixel per device pixel: the caller asked for an exact size, and
+    // DPR scaling here would multiply it by the host machine's zoom.
+    DPR = 1;
+    canvas.width = w;
+    canvas.height = h;
+    // A wallpaper is viewed at its own size, not as a window: keep the plant's
+    // line weight relative to the artwork so a 4K export is not a hairline.
+    setStrokeScale(Math.min(w, h) / 1080);
+    theme = THEMES[themeName];
+    still(t);
+
+    // render() clears to transparent so the page can own its background.
+    // A wallpaper file has to carry the paper itself.
+    var out = document.createElement('canvas');
+    out.width = w;
+    out.height = h;
+    var octx = out.getContext('2d');
+    octx.fillStyle = THEMES[themeName].bg;
+    octx.fillRect(0, 0, w, h);
+    octx.drawImage(canvas, 0, 0);
+
+    var id = cfg.id;
+    out.toBlob(function (blob) {
+      canvas.width = 1;
+      canvas.height = 1;
+      out.width = 1;
+      out.height = 1;
+      window.parent.postMessage(
+        blob
+          ? { type: 'wallpaper', id: id, blob: blob }
+          : { type: 'wallpaper', id: id, error: 'PNG encoding failed' },
+        '*'
+      );
+    }, 'image/png');
+  }
+
+  // Build the audio graph before the first frame is requested. The context, the
+  // limiter and the 3.2 s impulse response are ~140 ms of main-thread work on a
+  // slow machine, and this is the only moment where that is free: after this
+  // line the intro is running, and a stall there is a dropped frame.
+  SFX.prepare();
+
+  resize();
+  // #loader (or ?loader) starts in the looping badge, which is how the loader
+  // can be inspected standalone before any page embeds it. An export host
+  // starts nothing: it drives the page itself, one still at a time.
+  if (EXPORT_MODE) {
+    // Silent until asked.
+  } else if (/loader/.test(location.hash) || /[?&]loader\b/.test(location.search)) {
+    startLoader();
+  } else {
+    play();
+  }
+})();
+</script> <!-- build 567e9cf04dccf709 -->
